@@ -31,19 +31,27 @@ func main() {
 
 	authService := bankldapService.NewService(bankLdapStore)
 
-	telegram := telegram.NewService(telegramStore, authService)
-	alert := alert.NewService(telegram, alertStore)
+	telegramService := telegram.NewService(telegramStore, authService)
+	alertService := alert.NewService(telegramService, alertStore)
 	firstcall := firstCall.NewDefaultFirstcallService()
-	alexa := halaws.NewService(alert)
+	alexa := halaws.NewService(alertService)
 
 	failureRateRDC := monitor.NewFailureRateMonitor("/Prognosis/DashboardView/2f0f44ba-a6bd-4795-8de7-b4c140703912")
 	failureRateSDC := monitor.NewFailureRateMonitor("/Prognosis/DashboardView/dc571d93-8d1a-45f6-bed3-d44e46367d3a")
 	responseCode91RDC := monitor.NewResponseCode91Monitor("/Prognosis/DashboardView/1537cb18-a6ee-4ece-bc49-506eeab67428")
 	responseCode91SDC := monitor.NewResponseCode91Monitor("/Prognosis/DashboardView/1759f135-353b-4760-970e-a3794b9729ba")
 
-	calloutService := callout.NewService(alert, firstcall, nil, nil, alexa)
+	calloutService := callout.NewService(alertService, firstcall, nil, nil, alexa)
 
-	monitor.NewService(calloutService, alert, failureRateRDC, failureRateSDC, responseCode91RDC, responseCode91SDC)
+	monitor.NewService(calloutService, alertService, failureRateRDC, failureRateSDC, responseCode91RDC, responseCode91SDC)
+
+	telegramService.RegisterCommand(alert.NewSetGroupCommand(telegramService, alertStore))
+	telegramService.RegisterCommand(alert.NewSetNonTechnicalGroupCommand(telegramService, alertStore))
+	telegramService.RegisterCommand(alert.NewSetHeartbeatGroupCommand(telegramService, alertStore))
+	telegramService.RegisterCommand(telegram.NewHelpCommand(telegramService))
+
+	telegramService.RegisterCommand(bankldapService.NewRegisterCommand(telegramService, bankLdapStore))
+	telegramService.RegisterCommand(bankldapService.NewTokenCommand(telegramService, bankLdapStore))
 
 	logger.Log("All Systems GO!")
 	errs := make(chan error, 2)

@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prognosis
+  labels:
+    name: prognosis
+data:
+  MONGO_SERVERS: pchop85.standardbank.co.za:27017,pchop86.standardbank.co.za:27017,pchop87.standardbank.co.za:27017
+  MONGO_USER: chop
+  MONGO_REPLICA_SET: humongo
+  MONGO_AUTH_SOURCE: admin
+  MONGO_SSL: "0"
+  MONDO_DATABASE: prognosis
+  NO_PROXY: bankldap.grpc.legion.sbsa.local,196.8.10.103
+  AWS_ACCESS_KEY_ID: AKIAJEUH6NFYWITFEYTA
+  AWS_REGION: us-east-1
+  AWS_CONNECT_INSTANCE: cb23092d-681f-49a4-b8f7-ff5c739b6c7c
+  AWS_CONNECT_FLOW_ID: ab2a4f68-b6e5-49f3-ab01-c268fd0ebf8a
+  AWS_CONNECT_SOURCE_PHONE: "+12165391077"
+  BANK_LDAP_ENDPOINT: https://bankldap.grpc.legion.sbsa.local/lookup/
+  SMTP_SERVER: mail.standardbank.co.za
+  SMTP_FROM_ADDRESS: hal@stabdardbank.co.za
+  PROGNOSIS_ENDPOINT: https://196.8.10.103
+  PROGNOSIS_USERNAME: c1592023
+  DEFAULT_CALLOUT_NUMBER:

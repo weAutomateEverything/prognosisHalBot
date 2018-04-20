@@ -1,0 +1,25 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: prognosis
+  name: prognosis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prognosis
+  template:
+    metadata:
+      labels:
+        app: prognosis
+    spec:
+      containers:
+      - image: weautomateeverything/prognosismonitor:1.1.1
+        name: prognosis
+        envFrom:
+        - configMapRef:
+            name: prognosis
+        - secretRef:
+            name: prognosis
+
