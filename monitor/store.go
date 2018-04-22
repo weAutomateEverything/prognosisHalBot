@@ -34,7 +34,7 @@ func (s *store) saveResponceCodeData(d []string) {
 	c := s.db.C("responsecode")
 	r := responceCodeRecord{
 		Date:time.Now(),
-		responseCodes: d,
+		ResponseCodes: d,
 	}
 
 	c.Insert(&r)
@@ -47,6 +47,6 @@ type rateRecord struct {
 
 type responceCodeRecord struct {
 	Date time.Time
-	responseCodes []string
+	ResponseCodes []string
 }
 

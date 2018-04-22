@@ -37,12 +37,12 @@ func (s failureRateMonitor) checkResponse(r *http.Response) (failure bool, failu
 	found := false
 	var codes []string
 
+	if len(groups) < 2 {
+		return
+	}
 
-	for i := 0; i < len(groups); i++ {
-		if i < 2 {
-			return
-		}
-		row := groups[i].([]interface{})
+	for _, x := range groups[2:]{
+		row := x.([]interface{})
 		codes = append(codes,row[4].(string))
 		if row[4].(string) == "91" {
 			log.Println("Code 91 found")
