@@ -10,12 +10,17 @@ import (
 
 type responseCode91Monitor struct {
 	endpoint  string
+	store Store
+
 	failCount int
 	message   string
 }
 
-func NewFailureRateMonitor(endpoint string) Monitor {
-	return &responseCode91Monitor{endpoint: endpoint}
+func NewFailureRateMonitor(endpoint string, store Store) Monitor {
+	return &responseCode91Monitor{
+		endpoint: endpoint,
+		store:store,
+	}
 }
 
 func (s responseCode91Monitor) getEndpoint() string {
@@ -101,6 +106,8 @@ func (s responseCode91Monitor) checkResponse(r *http.Response) (failure bool, fa
 			}
 		}
 	}
+
+	s.store.saveRateData(row)
 
 	log.Println("All Clear")
 	s.message = ""

@@ -7,12 +7,16 @@ import (
 )
 
 type failureRateMonitor struct {
+	store    Store
 	cound91  int
 	endpoint string
 }
 
-func NewResponseCode91Monitor(endpoint string) Monitor {
-	return &failureRateMonitor{endpoint: endpoint}
+func NewResponseCode91Monitor(endpoint string, store Store) Monitor {
+	return &failureRateMonitor{
+		endpoint: endpoint,
+		store:    store,
+	}
 }
 
 func (s failureRateMonitor) getEndpoint() string {
@@ -30,22 +34,32 @@ func (s failureRateMonitor) checkResponse(r *http.Response) (failure bool, failu
 	data := declined["Data"].([]interface{})
 	groups := data[0].([]interface{})
 
-	for i := 0; i < len(groups); i++ {
-		if i < 2 {
-			return
-		}
-		row := groups[i].([]interface{})
+	found := false
+	var codes []string
+
+	if len(groups) < 2 {
+		return
+	}
+
+	for _, x := range groups[2:]{
+		row := x.([]interface{})
+		codes = append(codes,row[4].(string))
 		if row[4].(string) == "91" {
 			log.Println("Code 91 found")
 			s.cound91++
-			if s.cound91 == 5 {
-				failure = true
-				failuremsg = "5 consecutive failure code 91 found"
-				return
-			}
-			return
+			found = true
 		}
 	}
-	s.cound91 = 0
+
+	if !found {
+		s.cound91 = 0
+	}
+
+	if s.cound91 > 5 {
+		failure = true
+		failuremsg = "5 consecutive failure code 91 found"
+	}
+
+	s.store.saveResponceCodeData(codes)
 	return
 }
