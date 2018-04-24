@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"encoding/json"
 	"github.com/pkg/errors"
+	"github.com/kyokomi/emoji"
 )
 
 type Monitor interface {
@@ -100,21 +101,24 @@ func (s *service) checkPrognosis() {
 
 		//If the current run has failed, but we are not already in a failed state, invoke callout. This is to prevent callout from being invoked for every error.
 		if failed {
-			s.alert.SendAlert(context.TODO(),failmsg)
 			err := s.store.increaseCount(monitor.Id)
 			if err != nil {
 				log.Println(err)
 				s.alert.SendError(context.TODO(), err)
 			}
 			count, err := s.store.getCount(monitor.Id)
+
 			if err != nil {
 				log.Println(err)
 				s.alert.SendError(context.TODO(), err)
 			}
+			s.alert.SendAlert(context.TODO(),emoji.Sprintf(":warning: %v, count %v",failmsg,count))
 			if count == 5 {
 				s.callout.InvokeCallout(context.TODO(), "Prognosis Issue Detected", failmsg)
 			}
 			return
+		} else {
+			s.store.zeroCount(monitor.Id)
 		}
 	}
 

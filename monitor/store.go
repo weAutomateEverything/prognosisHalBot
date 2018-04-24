@@ -34,25 +34,50 @@ func (s *store) getCount(id string) (int,error){
 func (s *store) increaseCount(id string) error {
 	c := s.db.C("failurecound")
 	var r failurecount
-	err := c.Find(bson.M{"apistring": id}).One(&r)
+	q :=  c.Find(bson.M{"apistring": id})
+	count, err := q.Count()
 	if err != nil {
 		return err
 	}
-	r.Count++
-	return c.Insert(&r)
+
+	if count == 0 {
+		r.Apistring = id
+		r.Count = 1
+		return c.Insert(&r)
+	} else {
+		err := q.One(&r)
+		if err != nil {
+			return err
+		}
+		r.Count++
+		return c.Update(bson.M{"apistring": id},&r)
+	}
 }
 
 
 func (s *store) zeroCount(id string) error {
 	c := s.db.C("failurecound")
 	var r failurecount
-	err := c.Find(bson.M{"apistring": id}).One(&r)
+	q :=  c.Find(bson.M{"apistring": id})
+	count, err := q.Count()
 	if err != nil {
 		return err
 	}
-	r.Count = 0
-	return c.Insert(&r)
+
+	if count == 0 {
+		r.Apistring = id
+		r.Count = 0
+		return c.Insert(&r)
+	} else {
+		err := q.One(&r)
+		if err != nil {
+			return err
+		}
+		r.Count = 0
+		return c.Update(bson.M{"apistring": id},&r)
+	}
 }
+
 func (s *store) saveRateData(d data) {
 	c := s.db.C("ratedata")
 	r := rateRecord{
