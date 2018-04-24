@@ -14,10 +14,11 @@ import (
 	"strconv"
 	"github.com/weAutomateEverything/go2hal/alert"
 	"fmt"
+	"encoding/json"
+	"github.com/pkg/errors"
 )
 
 type Monitor interface {
-	getEndpoint() string
 	checkResponse(r *http.Response) (failure bool, failuremsg string, err error)
 }
 
@@ -25,19 +26,43 @@ type Service interface {
 }
 
 type service struct {
-	monitors []Monitor
-	callout  callout.Service
-	alert    alert.Service
+	callout callout.Service
+	alert   alert.Service
+	store   Store
 
-	failing bool
-	cookie  []*http.Cookie
+	failing    bool
+	cookie     []*http.Cookie
+	config     []environment
+	currentEnv int
 }
 
-func NewService(callout callout.Service, alert alert.Service, monitors ...Monitor) Service {
+func NewService(callout callout.Service, alert alert.Service, store Store) Service {
 	s := service{
-		monitors: monitors,
-		alert:    alert,
+		alert:   alert,
+		callout: callout,
+		store:   store,
 	}
+
+	cfg := os.Getenv("CONFIG_URL")
+	if cfg == "" {
+		panic("CONFIG_URL environment variable is not set.")
+	}
+	var configs []environment
+
+	resp, err := http.Get(cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	defer resp.Body.Close()
+
+	err = json.NewDecoder(resp.Body).Decode(&configs)
+	if err != nil {
+		panic(err)
+	}
+
+	s.config = configs
+
 	go func() { s.runChecks() }()
 
 	return s
@@ -62,36 +87,38 @@ func (s *service) checkPrognosis() {
 	//Login - get the cookie for auth
 	s.getLoginCookie()
 
-	allOk := true
-
-	for _, monitor := range s.monitors {
+	for _, monitor := range s.config[s.currentEnv].Monitors {
 
 		failed, failmsg, err := s.checkMonitor(monitor)
 
 		//If there is an error fetching data, lets handle it, but not use the results to determine the system health
 		if err != nil {
-			allOk = false
 			//If the error is not a NoResultsError, it means we have another technical error
-			if _, ok := err.(noResultsError); !ok {
-				s.alert.SendError(context.TODO(), err)
-			}
+			s.alert.SendError(context.TODO(), err)
 			continue
 		}
 
 		//If the current run has failed, but we are not already in a failed state, invoke callout. This is to prevent callout from being invoked for every error.
-		if failed && !s.failing {
-			s.failing = true
-			s.callout.InvokeCallout(context.TODO(), "Prognosis Issue Detected", failmsg)
+		if failed {
+			s.alert.SendAlert(context.TODO(),failmsg)
+			err := s.store.increaseCount(monitor.Id)
+			if err != nil {
+				log.Println(err)
+				s.alert.SendError(context.TODO(), err)
+			}
+			count, err := s.store.getCount(monitor.Id)
+			if err != nil {
+				log.Println(err)
+				s.alert.SendError(context.TODO(), err)
+			}
+			if count == 5 {
+				s.callout.InvokeCallout(context.TODO(), "Prognosis Issue Detected", failmsg)
+			}
 			return
 		}
 	}
 
-	//We have looked through all the tests - everythign appears fine. So lets set the system into a passing state
-	if allOk {
-		s.failing = false
-	}
-
-	req, _ := http.NewRequest("GET", fmt.Sprintf("%v/Prognosis/Logout",getEndpoint()), strings.NewReader(""))
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%v/Prognosis/Logout", s.getEndpoint()), strings.NewReader(""))
 	for _, c := range s.cookie {
 		req.AddCookie(c)
 	}
@@ -100,26 +127,33 @@ func (s *service) checkPrognosis() {
 }
 
 func (s *service) getLoginCookie() error {
-	log.Println("Logging in")
-	v := url.Values{}
-	v.Add("UserName", getUsername())
-	v.Add("Password", getPassword())
-	v.Add("Destination", "View Systems")
-	req, err := http.NewRequest("POST", fmt.Sprintf("%v/Prognosis/Login?returnUrl=/Prognosis/", getEndpoint()), strings.NewReader(v.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for i, x := range s.config {
+		log.Println("Logging in")
+		v := url.Values{}
+		v.Add("UserName", getUsername())
+		v.Add("Password", getPassword())
+		v.Add("Destination", "View Systems")
+		req, err := http.NewRequest("POST", fmt.Sprintf("%v/Prognosis/Login?returnUrl=/Prognosis/", x.Address), strings.NewReader(v.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+		resp, err := http.DefaultClient.Do(req)
 
-	if err != nil {
-		return err
+		if err != nil {
+			s.alert.SendError(context.TODO(), err)
+			continue
+		}
+		s.currentEnv = i
+		defer resp.Body.Close()
+		s.cookie = resp.Cookies()
+		return nil
 	}
-	defer resp.Body.Close()
-	s.cookie = resp.Cookies()
-	return nil
+	return errors.New("Unable to find an environment to successfully log into")
+
 }
 
-func (s *service) checkMonitor(monitor Monitor) (failing bool, message string, err error) {
-	req, err := http.NewRequest("GET", getEndpoint()+monitor.getEndpoint()+"?oTS=%23&_="+strconv.FormatInt(time.Now().Unix(), 10), strings.NewReader(""))
+func (s *service) checkMonitor(monitor monitors) (failing bool, message string, err error) {
+	url := fmt.Sprintf("%v/Prognosis/DashboardView/%v?oTS=#&_=%v", s.getEndpoint(), monitor.Id, strconv.FormatInt(time.Now().Unix(), 10))
+	req, err := http.NewRequest("GET", url, strings.NewReader(""))
 	for _, c := range s.cookie {
 		req.AddCookie(c)
 	}
@@ -129,7 +163,22 @@ func (s *service) checkMonitor(monitor Monitor) (failing bool, message string, e
 	}
 	defer resp.Body.Close()
 
-	return monitor.checkResponse(resp)
+	return s.findMonitor(monitor).checkResponse(resp)
+}
+
+func (s *service) findMonitor(m monitors) Monitor {
+
+	switch m.Type {
+	case "FailureRate":
+		{
+			return NewFailureRateMonitor(s.store)
+		}
+	case "Code91":
+		{
+			return NewResponseCode91Monitor(s.store)
+		}
+	}
+	panic(fmt.Sprintf("Unable to find monitor type %v", m.Type))
 }
 
 type httpLogger struct {
@@ -165,8 +214,8 @@ func (l *httpLogger) LogResponse(req *http.Request, res *http.Response, err erro
 	}
 }
 
-func getEndpoint() string {
-	return os.Getenv("PROGNOSIS_ENDPOINT")
+func (s service) getEndpoint() string {
+	return s.config[s.currentEnv].Address
 }
 
 func getUsername() string {
@@ -180,12 +229,26 @@ func getPassword() string {
 }
 
 type noResultsError struct {
+	messsage string
 }
 
-func (noResultsError) Error() string {
-	return "No Results"
+func (e noResultsError) Error() string {
+	return "No Results "+e.messsage
 }
 
 func (noResultsError) RuntimeError() {
 
+}
+
+type config struct {
+	Environments []environment
+}
+
+type environment struct {
+	Address  string
+	Monitors []monitors
+}
+
+type monitors struct {
+	Type, Id, Name string
 }

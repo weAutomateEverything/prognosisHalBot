@@ -37,14 +37,10 @@ func main() {
 	firstcall := firstCall.NewDefaultFirstcallService()
 	alexa := halaws.NewService(alertService)
 
-	failureRateRDC := monitor.NewFailureRateMonitor("/Prognosis/DashboardView/2f0f44ba-a6bd-4795-8de7-b4c140703912",monitorStore)
-	failureRateSDC := monitor.NewFailureRateMonitor("/Prognosis/DashboardView/dc571d93-8d1a-45f6-bed3-d44e46367d3a",monitorStore)
-	responseCode91RDC := monitor.NewResponseCode91Monitor("/Prognosis/DashboardView/1537cb18-a6ee-4ece-bc49-506eeab67428",monitorStore)
-	responseCode91SDC := monitor.NewResponseCode91Monitor("/Prognosis/DashboardView/1759f135-353b-4760-970e-a3794b9729ba",monitorStore)
 
 	calloutService := callout.NewService(alertService, firstcall, nil, nil, alexa)
 
-	monitor.NewService(calloutService, alertService, failureRateRDC, failureRateSDC, responseCode91RDC, responseCode91SDC)
+	monitor.NewService(calloutService, alertService,monitorStore)
 
 	telegramService.RegisterCommand(alert.NewSetGroupCommand(telegramService, alertStore))
 	telegramService.RegisterCommand(alert.NewSetNonTechnicalGroupCommand(telegramService, alertStore))
