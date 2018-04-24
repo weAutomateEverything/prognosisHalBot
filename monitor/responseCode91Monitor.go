@@ -7,57 +7,54 @@ import (
 )
 
 type failureRateMonitor struct {
-	store    Store
-	cound91  int
-	endpoint string
+	store Store
 }
 
-func NewResponseCode91Monitor(endpoint string, store Store) Monitor {
+func NewResponseCode91Monitor(store Store) Monitor {
 	return &failureRateMonitor{
-		endpoint: endpoint,
-		store:    store,
+		store: store,
 	}
-}
-
-func (s failureRateMonitor) getEndpoint() string {
-	return s.endpoint
 }
 
 func (s failureRateMonitor) checkResponse(r *http.Response) (failure bool, failuremsg string, err error) {
 	var d map[string]interface{}
 	err = json.NewDecoder(r.Body).Decode(&d)
 	if err != nil {
+		log.Println("Error unmarshalling response")
 		return
 	}
 
-	declined := d["Analysis_of_Declines"].(map[string]interface{})
+	tmp, ok := d["Analysis_of_Declines"]
+	if !ok {
+		log.Println("No Response Code 91 body found")
+		err = noResultsError{messsage:"Analysis_of_Declines not found"}
+		return
+	}
+
+	declined := tmp.(map[string]interface{})
 	data := declined["Data"].([]interface{})
+	if len(data) == 0 {
+		log.Println("No Data found in response code 91")
+		err = noResultsError{messsage:"Data Length == 0"}
+		return
+	}
 	groups := data[0].([]interface{})
 
-	found := false
 	var codes []string
 
 	if len(groups) < 2 {
+		err = noResultsError{messsage:"Data Length == 2"}
 		return
 	}
 
-	for _, x := range groups[2:]{
+	for _, x := range groups[2:] {
 		row := x.([]interface{})
-		codes = append(codes,row[4].(string))
+		codes = append(codes, row[4].(string))
 		if row[4].(string) == "91" {
 			log.Println("Code 91 found")
-			s.cound91++
-			found = true
+			failure = true
+			failuremsg = "Code 91 Found"
 		}
-	}
-
-	if !found {
-		s.cound91 = 0
-	}
-
-	if s.cound91 > 5 {
-		failure = true
-		failuremsg = "5 consecutive failure code 91 found"
 	}
 
 	s.store.saveResponceCodeData(codes)

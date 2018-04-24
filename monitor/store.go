@@ -3,6 +3,7 @@ package monitor
 import (
 	"gopkg.in/mgo.v2"
 	"time"
+	"gopkg.in/mgo.v2/bson"
 )
 
 type store struct {
@@ -12,6 +13,9 @@ type store struct {
 type Store interface {
 	saveRateData(d data)
 	saveResponceCodeData([]string)
+	getCount(id string) (int, error)
+	increaseCount(id string) error
+	zeroCount(id string) error
 }
 
 func NewMongoStore(db *mgo.Database) Store {
@@ -19,6 +23,61 @@ func NewMongoStore(db *mgo.Database) Store {
 		db:db,
 	}
 }
+
+func (s *store) getCount(id string) (int,error){
+	c := s.db.C("failurecound")
+	var r failurecount
+	err := c.Find(bson.M{"apistring":id}).One(&r)
+	return r.Count, err
+}
+
+func (s *store) increaseCount(id string) error {
+	c := s.db.C("failurecound")
+	var r failurecount
+	q :=  c.Find(bson.M{"apistring": id})
+	count, err := q.Count()
+	if err != nil {
+		return err
+	}
+
+	if count == 0 {
+		r.Apistring = id
+		r.Count = 1
+		return c.Insert(&r)
+	} else {
+		err := q.One(&r)
+		if err != nil {
+			return err
+		}
+		r.Count++
+		return c.Update(bson.M{"apistring": id},&r)
+	}
+}
+
+
+func (s *store) zeroCount(id string) error {
+	c := s.db.C("failurecound")
+	var r failurecount
+	q :=  c.Find(bson.M{"apistring": id})
+	count, err := q.Count()
+	if err != nil {
+		return err
+	}
+
+	if count == 0 {
+		r.Apistring = id
+		r.Count = 0
+		return c.Insert(&r)
+	} else {
+		err := q.One(&r)
+		if err != nil {
+			return err
+		}
+		r.Count = 0
+		return c.Update(bson.M{"apistring": id},&r)
+	}
+}
+
 func (s *store) saveRateData(d data) {
 	c := s.db.C("ratedata")
 	r := rateRecord{
@@ -50,3 +109,9 @@ type responceCodeRecord struct {
 	ResponseCodes []string
 }
 
+type failurecount struct {
+	ID           bson.ObjectId `bson:"_id,omitempty"`
+	Apistring string
+	Count int
+
+}
