@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"encoding/json"
 	"log"
+	"strconv"
 )
 
 type failureRateMonitor struct {
@@ -51,12 +52,16 @@ func (s failureRateMonitor) checkResponse(r *http.Response) (failure bool, failu
 		row := x.([]interface{})
 		codes = append(codes, row[4].(string))
 		if row[4].(string) == "91" {
-			log.Println("Code 91 found")
-			failure = true
-			failuremsg = "Code 91 Found"
+			val, err := strconv.Atoi(row[3].(string))
+			if err != nil {
+				continue
+			}
+			if val > 5 {
+				log.Println("Code 91 found")
+				failure = true
+				failuremsg = "Code 91 Found"
+			}
 		}
 	}
-
-	s.store.saveResponceCodeData(codes)
 	return
 }
