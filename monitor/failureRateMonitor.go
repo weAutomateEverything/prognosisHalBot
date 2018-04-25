@@ -72,10 +72,12 @@ func (s responseCode91Monitor) checkResponse(r *http.Response) (failure bool, fa
 	log.Printf("Rate Message - ID: %v, approved: %v, failed %v, declined: %v", row.id, row.approved, row.failed, row.declined)
 	s.store.saveRateData(row)
 
-	if row.approved == 0 && row.failed > 0 {
-		failuremsg = "No successful transactions found, only failed transactions"
-		log.Printf(failuremsg)
-		failure = true
+	if row.approved == 0 {
+		if row.failed > 0 {
+			failuremsg = "No successful transactions found, only failed transactions"
+			log.Printf(failuremsg)
+			failure = true
+		}
 		return
 	}
 
