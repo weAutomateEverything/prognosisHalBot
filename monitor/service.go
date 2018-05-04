@@ -113,7 +113,7 @@ func (s *service) checkPrognosis() {
 				s.alert.SendError(context.TODO(), err)
 			}
 			s.alert.SendAlert(context.TODO(),emoji.Sprintf(":warning: %v, count %v",failmsg,count))
-			if count == 5 {
+			if count == 10 {
 				s.callout.InvokeCallout(context.TODO(), "Prognosis Issue Detected", failmsg)
 			}
 			return
