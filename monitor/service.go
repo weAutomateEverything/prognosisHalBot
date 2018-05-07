@@ -21,7 +21,8 @@ import (
 )
 
 type Monitor interface {
-	checkResponse(r *http.Response) (failure bool, failuremsg string, err error)
+	CheckResponse([][]string) (failure bool, failuremsg string, err error)
+	GetName() string
 }
 
 type Service interface {
@@ -32,17 +33,25 @@ type service struct {
 	alert   alert.Service
 	store   Store
 
+	monitors map[string]Monitor
+
 	failing    bool
 	cookie     []*http.Cookie
 	config     []environment
 	currentEnv int
 }
 
-func NewService(callout callout.Service, alert alert.Service, store Store) Service {
+func NewService(callout callout.Service, alert alert.Service, store Store, monitors... Monitor) Service {
 	s := service{
 		alert:   alert,
 		callout: callout,
 		store:   store,
+	}
+
+	s.monitors = map[string]Monitor{}
+
+	for _, m := range monitors {
+		s.monitors[m.GetName()] = m
 	}
 
 	cfg := os.Getenv("CONFIG_URL")
@@ -158,7 +167,7 @@ func (s *service) getLoginCookie() error {
 
 func (s *service) checkMonitor(monitor monitors) (failing bool, message string, err error) {
 
-	guid, err := s.getGuidForMonitor(monitor.Dashboard,monitor.Id)
+	guid, err := s.getGuidForMonitor(monitor.Dashboard, monitor.Id)
 	if err != nil {
 		log.Println(err)
 		return
@@ -174,11 +183,56 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 	}
 	defer resp.Body.Close()
 
-	return s.findMonitor(monitor).checkResponse(resp)
+	var data map[string]interface{}
+
+	err = json.NewDecoder(resp.Body).Decode(&data)
+	if err != nil {
+		return
+	}
+
+	if data == nil {
+		err = fmt.Errorf("data nil for dashboard %v, id %v", monitor.Dashboard, monitor.Id)
+		return
+	}
+
+	//First the root element - thios should include a item called Data
+	for _, value := range data {
+		v, ok := value.(map[string]interface{})
+		if ok {
+			for key, t := range v {
+				if key == "Data" {
+					if len(t.([]interface{})) == 0 {
+						err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 0, so no real data", monitor.Dashboard, monitor.Id)}
+						return
+					}
+					d := t.([]interface{})[0].([]interface{})
+					if len(d) == 2 {
+						err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 2, so no real data", monitor.Dashboard, monitor.Id)}
+						return
+					}
+					var input [][]string
+					for _, row := range d[2:] {
+						var val []string
+						for _, m := range row.([]interface{}) {
+							val = append(val, m.(string))
+						}
+						input = append(input, val)
+					}
+					monitor := s.monitors[monitor.Type]
+					log.Printf(monitor.GetName())
+					return monitor.CheckResponse(input)
+
+				}
+			}
+		}
+	}
+
+	err = NoResultsError{fmt.Sprintf("no usable data found for for dashboard %v, id %v", monitor.Dashboard, monitor.Id)}
+	return
 }
 
 func (s *service) getGuidForMonitor(dashboard, id string) (guid string, err error) {
-	url := fmt.Sprintf("%v/Prognosis/Dashboard/Content/%v",s.getEndpoint(),dashboard)
+	url := fmt.Sprintf("%v/Prognosis/Dashboard/Content/%v", s.getEndpoint(), dashboard)
 	req, err := http.NewRequest("GET", url, strings.NewReader(""))
 	for _, c := range s.cookie {
 		req.AddCookie(c)
@@ -187,42 +241,36 @@ func (s *service) getGuidForMonitor(dashboard, id string) (guid string, err erro
 
 	doc, err := htmlquery.Parse(resp.Body)
 
-	if err != nil {return }
+	if err != nil {
+		return
+	}
 
-
-	nodes := htmlquery.Find(doc,fmt.Sprintf("//div[@id='%v']",id))
-	for _,node := range nodes{
-		s := node.FirstChild.FirstChild.Data
-		lines := strings.Split(s,"\n")
-		for _, line := range lines {
-			if strings.Index(line,"guid") != -1{
-				guid = strings.Replace(line,"guid:","",1)
-				guid = strings.Replace(guid,"\"","",-1)
-				guid = strings.Replace(guid,",","",-1)
-				guid = strings.TrimSpace(guid)
-				return
+	nodes := htmlquery.Find(doc, fmt.Sprintf("//div[@id='%v']", id))
+	for _, node := range nodes {
+		child := node.FirstChild
+		for child.Data != "script" {
+			child = child.NextSibling
+			if child == nil {
+				break
+			}
+		}
+		if child != nil {
+			s := child.FirstChild.Data
+			lines := strings.Split(s, "\n")
+			for _, line := range lines {
+				if strings.Index(line, "guid") != -1 {
+					guid = line[strings.Index(line, "guid")+5:]
+					guid = strings.Replace(guid, "\"", "", -1)
+					guid = strings.Replace(guid, ",", "", -1)
+					guid = strings.TrimSpace(guid)
+					return
+				}
 			}
 		}
 	}
-	err = fmt.Errorf("no guid found for %v on dashboard %v",id,dashboard)
+	err = fmt.Errorf("no guid found for %v on dashboard %v", id, dashboard)
 	return
 
-
-}
-
-func (s *service) findMonitor(m monitors) Monitor {
-
-	switch m.Type {
-	case "FailureRate":
-		{
-			return NewFailureRateMonitor(s.store)
-		}
-	case "Code91":
-		{
-			return NewResponseCode91Monitor(s.store)
-		}
-	}
-	panic(fmt.Sprintf("Unable to find monitor type %v", m.Type))
 }
 
 type httpLogger struct {
@@ -272,15 +320,15 @@ func getPassword() string {
 
 }
 
-type noResultsError struct {
-	messsage string
+type NoResultsError struct {
+	Messsage string
 }
 
-func (e noResultsError) Error() string {
-	return "No Results " + e.messsage
+func (e NoResultsError) Error() string {
+	return "No Results " + e.Messsage
 }
 
-func (noResultsError) RuntimeError() {
+func (NoResultsError) RuntimeError() {
 
 }
 
@@ -295,4 +343,8 @@ type environment struct {
 
 type monitors struct {
 	Type, Dashboard, Id, Name string
+}
+
+type input struct {
+	data map[string]interface{}
 }
