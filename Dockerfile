@@ -4,3 +4,4 @@ COPY cacert.pem /etc/ssl/certs/ca-bundle.crt
 # Now just add the binary
 COPY app /
 ENTRYPOINT ["/app"]
+EXPOSE 8001
