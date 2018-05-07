@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"github.com/pkg/errors"
 	"github.com/kyokomi/emoji"
+	"github.com/antchfx/htmlquery"
 )
 
 type Monitor interface {
@@ -112,7 +113,7 @@ func (s *service) checkPrognosis() {
 				log.Println(err)
 				s.alert.SendError(context.TODO(), err)
 			}
-			s.alert.SendAlert(context.TODO(),emoji.Sprintf(":warning: %v, count %v",failmsg,count))
+			s.alert.SendAlert(context.TODO(), emoji.Sprintf(":warning: %v, count %v", failmsg, count))
 			if count == 10 {
 				s.callout.InvokeCallout(context.TODO(), "Prognosis Issue Detected", failmsg)
 			}
@@ -156,7 +157,13 @@ func (s *service) getLoginCookie() error {
 }
 
 func (s *service) checkMonitor(monitor monitors) (failing bool, message string, err error) {
-	url := fmt.Sprintf("%v/Prognosis/DashboardView/%v?oTS=#&_=%v", s.getEndpoint(), monitor.Id, strconv.FormatInt(time.Now().Unix(), 10))
+
+	guid, err := s.getGuidForMonitor(monitor.Dashboard,monitor.Id)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	url := fmt.Sprintf("%v/Prognosis/DashboardView/%v?oTS=#&_=%v", s.getEndpoint(), guid, strconv.FormatInt(time.Now().Unix(), 10))
 	req, err := http.NewRequest("GET", url, strings.NewReader(""))
 	for _, c := range s.cookie {
 		req.AddCookie(c)
@@ -168,6 +175,39 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 	defer resp.Body.Close()
 
 	return s.findMonitor(monitor).checkResponse(resp)
+}
+
+func (s *service) getGuidForMonitor(dashboard, id string) (guid string, err error) {
+	url := fmt.Sprintf("%v/Prognosis/Dashboard/Content/%v",s.getEndpoint(),dashboard)
+	req, err := http.NewRequest("GET", url, strings.NewReader(""))
+	for _, c := range s.cookie {
+		req.AddCookie(c)
+	}
+	resp, err := http.DefaultClient.Do(req)
+
+	doc, err := htmlquery.Parse(resp.Body)
+
+	if err != nil {return }
+
+
+	nodes := htmlquery.Find(doc,fmt.Sprintf("//div[@id='%v']",id))
+	for _,node := range nodes{
+		s := node.FirstChild.FirstChild.Data
+		lines := strings.Split(s,"\n")
+		for _, line := range lines {
+			if strings.Index(line,"guid") != -1{
+				guid = strings.Replace(line,"guid:","",1)
+				guid = strings.Replace(guid,"\"","",-1)
+				guid = strings.Replace(guid,",","",-1)
+				guid = strings.TrimSpace(guid)
+				return
+			}
+		}
+	}
+	err = fmt.Errorf("no guid found for %v on dashboard %v",id,dashboard)
+	return
+
+
 }
 
 func (s *service) findMonitor(m monitors) Monitor {
@@ -237,7 +277,7 @@ type noResultsError struct {
 }
 
 func (e noResultsError) Error() string {
-	return "No Results "+e.messsage
+	return "No Results " + e.messsage
 }
 
 func (noResultsError) RuntimeError() {
@@ -254,5 +294,5 @@ type environment struct {
 }
 
 type monitors struct {
-	Type, Id, Name string
+	Type, Dashboard, Id, Name string
 }
