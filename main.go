@@ -16,6 +16,8 @@ import (
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"github.com/weAutomateEverything/go2hal/database"
 	"github.com/weAutomateEverything/bankldapService"
+	"net/http"
+	"github.com/weAutomateEverything/prognosisHalBot/sourceMonitor"
 )
 
 func main() {
@@ -29,6 +31,7 @@ func main() {
 	telegramStore := telegram.NewMongoStore(db)
 	bankLdapStore := bankldapService.NewMongoStore(db)
 	monitorStore := monitor.NewMongoStore(db)
+	sourceStore := sourceMonitor.NewMontoSourceSinkStore(db)
 
 	authService := bankldapService.NewService(bankLdapStore)
 
@@ -40,7 +43,7 @@ func main() {
 
 	calloutService := callout.NewService(alertService, firstcall, nil, nil, alexa)
 
-	monitor.NewService(calloutService, alertService,monitorStore)
+	monitor.NewService(calloutService, alertService,monitorStore,monitor.NewResponseCode91Monitor(),monitor.NewFailureRateMonitor(),sourceMonitor.NewSourceSinkMonitor(sourceStore))
 
 	telegramService.RegisterCommand(alert.NewSetGroupCommand(telegramService, alertStore))
 	telegramService.RegisterCommand(alert.NewSetNonTechnicalGroupCommand(telegramService, alertStore))
@@ -49,9 +52,19 @@ func main() {
 
 	telegramService.RegisterCommand(bankldapService.NewRegisterCommand(telegramService, bankLdapStore))
 	telegramService.RegisterCommand(bankldapService.NewTokenCommand(telegramService, bankLdapStore))
+	httpLogger := log.With(logger, "component", "http")
+
+	mux := http.NewServeMux()
+	mux.Handle("/sourceMonitor/", sourceMonitor.MakeHandler(sourceStore, httpLogger))
+	http.Handle("/", accessControl(mux))
 
 	logger.Log("All Systems GO!")
 	errs := make(chan error, 2)
+
+	go func() {
+		logger.Log("transport", "http", "address", ":8001", "msg", "listening")
+		errs <- http.ListenAndServe(":8001", nil)
+	}()
 
 	go func() {
 		c := make(chan os.Signal)
@@ -60,4 +73,18 @@ func main() {
 	}()
 	logger.Log("terminated", <-errs)
 
+}
+
+func accessControl(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type")
+
+		if r.Method == "OPTIONS" {
+			return
+		}
+
+		h.ServeHTTP(w, r)
+	})
 }
