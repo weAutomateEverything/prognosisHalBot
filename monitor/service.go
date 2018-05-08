@@ -88,7 +88,7 @@ func (s *service) runChecks() {
 	http.DefaultClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
-	
+
 	//Login - get the cookie for auth
 	s.getLoginCookie()
 
@@ -187,7 +187,7 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 		log.Println(err)
 		return
 	}
-	url := fmt.Sprintf("%v/Prognosis/DashboardView/%v?oTS=#&_=%v", s.getEndpoint(), guid, strconv.FormatInt(time.Now().Unix(), 10))
+	url := fmt.Sprintf("%v/Prognosis/DashboardView/%v?oTS=%v#&_=%v", s.getEndpoint(), guid, monitor.ObjectType,strconv.FormatInt(time.Now().Unix(), 10))
 	req, err := http.NewRequest("GET", url, strings.NewReader(""))
 	for _, c := range s.cookie {
 		req.AddCookie(c)
@@ -357,7 +357,7 @@ type environment struct {
 }
 
 type monitors struct {
-	Type, Dashboard, Id, Name string
+	Type, Dashboard, Id, Name, ObjectType string
 }
 
 type input struct {
