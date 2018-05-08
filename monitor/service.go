@@ -230,11 +230,11 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 					if key == "Data" {
 						if len(t.([]interface{})) == 0 {
 							count++
-							if count == 3 {
+							if count == 5  {
 								err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 0, so no real data", monitor.Dashboard, monitor.Id)}
 								return false,"",err
 							}
-							time.Sleep(1 * time.Second)
+							time.Sleep(2 * time.Second)
 							continue httpDO
 						}
 						d := t.([]interface{})[0].([]interface{})
