@@ -18,6 +18,7 @@ import (
 	"github.com/antchfx/htmlquery"
 	"crypto/tls"
 	"github.com/ernesto-jimenez/httplogger"
+	"net/http/httputil"
 )
 
 type Monitor interface {
@@ -43,7 +44,7 @@ type service struct {
 	techErrCount int
 }
 
-func NewService(callout callout.Service, alert alert.Service, store Store, monitors... Monitor) Service {
+func NewService(callout callout.Service, alert alert.Service, store Store, monitors ... Monitor) Service {
 	s := service{
 		alert:   alert,
 		callout: callout,
@@ -111,7 +112,7 @@ func (s *service) checkPrognosis() {
 			if !ok {
 				s.techErrCount++
 				if s.techErrCount == 10 {
-					s.alert.SendError(context.TODO(),errors.New("10 failures detected. Attempting login to find a new host"))
+					s.alert.SendError(context.TODO(), errors.New("10 failures detected. Attempting login to find a new host"))
 					s.getLoginCookie()
 					continue
 				}
@@ -165,7 +166,7 @@ func (s *service) getLoginCookie() error {
 				continue
 			}
 			if len(resp.Cookies()) == 0 {
-				s.alert.SendError(context.TODO(),errors.New("No cookies found on response"))
+				s.alert.SendError(context.TODO(), errors.New("No cookies found on response"))
 				continue
 			}
 			s.currentEnv = i
@@ -173,7 +174,7 @@ func (s *service) getLoginCookie() error {
 			s.cookie = resp.Cookies()
 			return nil
 		}
-		s.alert.SendError(context.TODO(),errors.New("Unable to successfully log into prognosis... will try again in 60 seconds"))
+		s.alert.SendError(context.TODO(), errors.New("Unable to successfully log into prognosis... will try again in 60 seconds"))
 		time.Sleep(60 * time.Second)
 	}
 	return nil
@@ -190,12 +191,16 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 	if monitor.ObjectType == "" {
 		monitor.ObjectType = "#"
 	}
-	url := fmt.Sprintf("%v/Prognosis/DashboardView/%v?oTS=%v&_=%v",
+	url := fmt.Sprintf("%v/Prognosis/DashboardView/%v",
 		s.getEndpoint(),
 		guid,
-		monitor.ObjectType,
-		strconv.FormatInt(time.Now().Unix(), 10))
+	)
 	req, err := http.NewRequest("GET", url, strings.NewReader(""))
+	q := req.URL.Query()
+	q.Add("oTS", monitor.ObjectType)
+	q.Add("_", strconv.FormatInt(time.Now().Unix(), 10))
+	req.URL.RawQuery = q.Encode()
+
 	for _, c := range s.cookie {
 		req.AddCookie(c)
 	}
@@ -326,6 +331,9 @@ func (l *httpLogger) LogResponse(req *http.Request, res *http.Response, err erro
 			req.URL.String(),
 		)
 	}
+
+	data, err := httputil.DumpResponse(res, true)
+	log.Println(string(data))
 }
 
 func (s service) getEndpoint() string {
