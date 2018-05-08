@@ -202,51 +202,60 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 	for _, c := range s.cookie {
 		req.AddCookie(c)
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return
-	}
-	defer resp.Body.Close()
 
-	var data map[string]interface{}
+	count := 0
+	httpDO:
+	for true {
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return false,"",err
+		}
+		defer resp.Body.Close()
 
-	err = json.NewDecoder(resp.Body).Decode(&data)
-	if err != nil {
-		return
-	}
+		var data map[string]interface{}
 
-	if data == nil {
-		err = fmt.Errorf("data nil for dashboard %v, id %v", monitor.Dashboard, monitor.Id)
-		return
-	}
+		err = json.NewDecoder(resp.Body).Decode(&data)
+		if err != nil {
+			return false,"",err
+		}
 
-	//First the root element - thios should include a item called Data
-	for _, value := range data {
-		v, ok := value.(map[string]interface{})
-		if ok {
-			for key, t := range v {
-				if key == "Data" {
-					if len(t.([]interface{})) == 0 {
-						err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 0, so no real data", monitor.Dashboard, monitor.Id)}
-						return
-					}
-					d := t.([]interface{})[0].([]interface{})
-					if len(d) == 2 {
-						err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 2, so no real data", monitor.Dashboard, monitor.Id)}
-						return
-					}
-					var input [][]string
-					for _, row := range d[2:] {
-						var val []string
-						for _, m := range row.([]interface{}) {
-							val = append(val, m.(string))
+		if data == nil {
+			err = fmt.Errorf("data nil for dashboard %v, id %v", monitor.Dashboard, monitor.Id)
+			return false,"",err
+		}
+
+		//First the root element - thios should include a item called Data
+		for _, value := range data {
+			v, ok := value.(map[string]interface{})
+			if ok {
+				for key, t := range v {
+					if key == "Data" {
+						if len(t.([]interface{})) == 0 {
+							count++
+							if count == 3 {
+								err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 0, so no real data", monitor.Dashboard, monitor.Id)}
+								return false,"",err
+							}
+							continue httpDO
 						}
-						input = append(input, val)
-					}
-					monitor := s.monitors[monitor.Type]
-					log.Printf(monitor.GetName())
-					return monitor.CheckResponse(input)
+						d := t.([]interface{})[0].([]interface{})
+						if len(d) == 2 {
+							err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 2, so no real data", monitor.Dashboard, monitor.Id)}
+							return false,"",err
+						}
+						var input [][]string
+						for _, row := range d[2:] {
+							var val []string
+							for _, m := range row.([]interface{}) {
+								val = append(val, m.(string))
+							}
+							input = append(input, val)
+						}
+						monitor := s.monitors[monitor.Type]
+						log.Printf(monitor.GetName())
+						return monitor.CheckResponse(input)
 
+					}
 				}
 			}
 		}
