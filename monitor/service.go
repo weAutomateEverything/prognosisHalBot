@@ -4,8 +4,6 @@ import (
 	"net/http"
 	"os"
 	"time"
-	"crypto/tls"
-	"github.com/ernesto-jimenez/httplogger"
 	"net/url"
 	"strings"
 	"log"
@@ -18,6 +16,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/kyokomi/emoji"
 	"github.com/antchfx/htmlquery"
+	"crypto/tls"
+	"github.com/ernesto-jimenez/httplogger"
 )
 
 type Monitor interface {
@@ -39,6 +39,8 @@ type service struct {
 	cookie     []*http.Cookie
 	config     []environment
 	currentEnv int
+
+	techErrCount int
 }
 
 func NewService(callout callout.Service, alert alert.Service, store Store, monitors... Monitor) Service {
@@ -80,6 +82,16 @@ func NewService(callout callout.Service, alert alert.Service, store Store, monit
 }
 
 func (s *service) runChecks() {
+	logger := newLogger()
+	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	http.DefaultClient.Transport = httplogger.NewLoggedTransport(http.DefaultTransport, logger)
+	http.DefaultClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	
+	//Login - get the cookie for auth
+	s.getLoginCookie()
+
 	for true {
 		s.checkPrognosis()
 		time.Sleep(10 * time.Second)
@@ -88,15 +100,6 @@ func (s *service) runChecks() {
 
 func (s *service) checkPrognosis() {
 	log.Println("Starting Prognosis")
-	logger := newLogger()
-	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	http.DefaultClient.Transport = httplogger.NewLoggedTransport(http.DefaultTransport, logger)
-	http.DefaultClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		return http.ErrUseLastResponse
-	}
-
-	//Login - get the cookie for auth
-	s.getLoginCookie()
 
 	for _, monitor := range s.config[s.currentEnv].Monitors {
 
@@ -104,10 +107,21 @@ func (s *service) checkPrognosis() {
 
 		//If there is an error fetching data, lets handle it, but not use the results to determine the system health
 		if err != nil {
+			_, ok := err.(NoResultsError)
+			if !ok {
+				s.techErrCount++
+				if s.techErrCount == 10 {
+					s.alert.SendError(context.TODO(),errors.New("10 failures detected. Attempting login to find a new host"))
+					s.getLoginCookie()
+					continue
+				}
+			}
+			s.techErrCount = 0
 			//If the error is not a NoResultsError, it means we have another technical error
 			s.alert.SendError(context.TODO(), err)
 			continue
 		}
+		s.techErrCount = 0
 
 		//If the current run has failed, but we are not already in a failed state, invoke callout. This is to prevent callout from being invoked for every error.
 		if failed {
@@ -131,37 +145,38 @@ func (s *service) checkPrognosis() {
 			s.store.zeroCount(monitor.Id)
 		}
 	}
-
-	req, _ := http.NewRequest("GET", fmt.Sprintf("%v/Prognosis/Logout", s.getEndpoint()), strings.NewReader(""))
-	for _, c := range s.cookie {
-		req.AddCookie(c)
-	}
-	resp, _ := http.DefaultClient.Do(req)
-	defer resp.Body.Close()
 }
 
 func (s *service) getLoginCookie() error {
-	for i, x := range s.config {
-		log.Println("Logging in")
-		v := url.Values{}
-		v.Add("UserName", getUsername())
-		v.Add("Password", getPassword())
-		v.Add("Destination", "View Systems")
-		req, err := http.NewRequest("POST", fmt.Sprintf("%v/Prognosis/Login?returnUrl=/Prognosis/", x.Address), strings.NewReader(v.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for true {
+		for i, x := range s.config {
+			log.Println("Logging in")
+			v := url.Values{}
+			v.Add("UserName", getUsername())
+			v.Add("Password", getPassword())
+			v.Add("Destination", "View Systems")
+			req, err := http.NewRequest("POST", fmt.Sprintf("%v/Prognosis/Login?returnUrl=/Prognosis/", x.Address), strings.NewReader(v.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-		resp, err := http.DefaultClient.Do(req)
+			resp, err := http.DefaultClient.Do(req)
 
-		if err != nil {
-			s.alert.SendError(context.TODO(), err)
-			continue
+			if err != nil {
+				s.alert.SendError(context.TODO(), err)
+				continue
+			}
+			if len(resp.Cookies()) == 0 {
+				s.alert.SendError(context.TODO(),errors.New("No cookies found on response"))
+				continue
+			}
+			s.currentEnv = i
+			defer resp.Body.Close()
+			s.cookie = resp.Cookies()
+			return nil
 		}
-		s.currentEnv = i
-		defer resp.Body.Close()
-		s.cookie = resp.Cookies()
-		return nil
+		s.alert.SendError(context.TODO(),errors.New("Unable to successfully log into prognosis... will try again in 60 seconds"))
+		time.Sleep(60 * time.Second)
 	}
-	return errors.New("Unable to find an environment to successfully log into")
+	return nil
 
 }
 
