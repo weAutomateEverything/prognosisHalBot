@@ -17,7 +17,6 @@ import (
 	"github.com/antchfx/htmlquery"
 	"crypto/tls"
 	"github.com/ernesto-jimenez/httplogger"
-	"net/http/httputil"
 )
 
 type Monitor interface {
@@ -210,11 +209,10 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 		if err != nil {
 			return false,"",err
 		}
-		defer resp.Body.Close()
-
 		var data map[string]interface{}
 
 		err = json.NewDecoder(resp.Body).Decode(&data)
+		resp.Body.Close()
 		if err != nil {
 			return false,"",err
 		}
@@ -236,6 +234,7 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 								err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 0, so no real data", monitor.Dashboard, monitor.Id)}
 								return false,"",err
 							}
+							time.Sleep(1 * time.Second)
 							continue httpDO
 						}
 						d := t.([]interface{})[0].([]interface{})
@@ -338,9 +337,6 @@ func (l *httpLogger) LogResponse(req *http.Request, res *http.Response, err erro
 			req.URL.String(),
 		)
 	}
-
-	data, err := httputil.DumpResponse(res, true)
-	log.Println(string(data))
 }
 
 func (s service) getEndpoint() string {
