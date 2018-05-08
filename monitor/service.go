@@ -9,7 +9,6 @@ import (
 	"log"
 	"github.com/weAutomateEverything/go2hal/callout"
 	"golang.org/x/net/context"
-	"strconv"
 	"github.com/weAutomateEverything/go2hal/alert"
 	"fmt"
 	"encoding/json"
@@ -198,7 +197,6 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 	req, err := http.NewRequest("GET", url, strings.NewReader(""))
 	q := req.URL.Query()
 	q.Add("oTS", monitor.ObjectType)
-	q.Add("_", strconv.FormatInt(time.Now().Unix(), 10))
 	req.URL.RawQuery = q.Encode()
 
 	for _, c := range s.cookie {
