@@ -187,7 +187,14 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 		log.Println(err)
 		return
 	}
-	url := fmt.Sprintf("%v/Prognosis/DashboardView/%v?oTS=%v#&_=%v", s.getEndpoint(), guid, monitor.ObjectType,strconv.FormatInt(time.Now().Unix(), 10))
+	if monitor.ObjectType == "" {
+		monitor.ObjectType = "#"
+	}
+	url := fmt.Sprintf("%v/Prognosis/DashboardView/%v?oTS=%v&_=%v",
+		s.getEndpoint(),
+		guid,
+		monitor.ObjectType,
+		strconv.FormatInt(time.Now().Unix(), 10))
 	req, err := http.NewRequest("GET", url, strings.NewReader(""))
 	for _, c := range s.cookie {
 		req.AddCookie(c)
