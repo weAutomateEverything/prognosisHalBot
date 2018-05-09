@@ -3,7 +3,6 @@ package sourceMonitor
 import (
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"strings"
-	"fmt"
 	"strconv"
 	"time"
 	"log"
@@ -31,7 +30,7 @@ func (s sourceSinkMonitor) CheckResponse(input [][]string) (failure bool, failur
 			if strings.Index(times.Nodename, node) != -1 {
 				if s.checkSend(times) {
 					failure = true
-					failuremsg = fmt.Sprintf("Link down found. %v", node)
+					failuremsg = node
 					return
 				}
 				continue rowloop
