@@ -18,7 +18,6 @@ import (
 	"github.com/weAutomateEverything/bankldapService"
 	"net/http"
 	"github.com/weAutomateEverything/prognosisHalBot/sourceMonitor"
-	"golang.org/x/net/context"
 )
 
 func main() {
@@ -43,11 +42,6 @@ func main() {
 
 
 	calloutService := callout.NewService(alertService, firstcall, nil, nil, alexa)
-
-	variables := map[string]string{}
-	variables["Link"] = "ATMGRS01"
-
-	calloutService.InvokeCallout(context.TODO(),"Test","test",variables)
 
 	monitor.NewService(calloutService, alertService,monitorStore,monitor.NewResponseCode91Monitor(),monitor.NewFailureRateMonitor(),sourceMonitor.NewSourceSinkMonitor(sourceStore))
 
