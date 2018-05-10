@@ -31,9 +31,8 @@ func (s responseCode91) CheckResponse(input [][]string) (failure bool, failurems
 			}
 			if val > 5 {
 				log.Printf("Code %v found",row[4])
-				failure = true
 				failuremsg = fmt.Sprintf("Multiple Code %v found",row[4])
-				return
+				return true, failuremsg, nil
 			}
 		}
 	}
