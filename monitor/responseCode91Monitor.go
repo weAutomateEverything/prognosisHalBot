@@ -3,6 +3,7 @@ package monitor
 import (
 	"log"
 	"strconv"
+	"fmt"
 )
 
 type responseCode91 struct {
@@ -22,17 +23,19 @@ func (s responseCode91) CheckResponse(input [][]string) (failure bool, failurems
 
 	for _, row := range input {
 		codes = append(codes, row[4])
-		if row[4] == "91" {
+		switch  row[4] {
+		case "91", "68":
 			val, err := strconv.Atoi(row[3])
 			if err != nil {
 				continue
 			}
 			if val > 5 {
-				log.Println("Code 91 found")
-				failure = true
-				failuremsg = "Code 91 Found"
+				log.Printf("Code %v found",row[4])
+				failuremsg = fmt.Sprintf("Multiple Code %v found",row[4])
+				return true, failuremsg, nil
 			}
 		}
 	}
 	return
+
 }

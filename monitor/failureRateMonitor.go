@@ -54,7 +54,7 @@ func (s failureRateMonitor) CheckResponse(input [][]string) (failure bool, failu
 	}
 
 	if row.failed/row.approved > 20/100 {
-		failuremsg = "Failed vs Successful transactions threshold breached. There is a high number of failed transactions vs successful transactions"
+		failuremsg = "There is a high number of failed transactions when compared to successful transactions"
 		log.Printf(failuremsg)
 		failure = true
 		return
