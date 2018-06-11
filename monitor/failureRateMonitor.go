@@ -21,7 +21,7 @@ func NewFailureRateMonitor() Monitor {
 func (s failureRateMonitor) CheckResponse(input [][]string) (failure bool, failuremsg string, err error) {
 	result := map[string]data{}
 
-	for _, y := range input[2:] {
+	for _, y := range input {
 		d, ok := result[y[0]]
 		if !ok {
 			d = data{}
