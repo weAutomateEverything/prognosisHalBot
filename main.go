@@ -1,19 +1,19 @@
 package main
 
 import (
-	"os"
-	"github.com/go-kit/kit/log/level"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
+	"os"
 
+	"fmt"
+	httptransport "github.com/go-openapi/runtime/client"
+	"github.com/weAutomateEverything/go2hal/database"
+	"github.com/weAutomateEverything/prognosisHalBot/client"
+	"github.com/weAutomateEverything/prognosisHalBot/monitor"
+	"github.com/weAutomateEverything/prognosisHalBot/sourceMonitor"
+	"net/http"
 	"os/signal"
 	"syscall"
-	"fmt"
-	"github.com/weAutomateEverything/prognosisHalBot/monitor"
-	"github.com/weAutomateEverything/go2hal/database"
-	"net/http"
-	"github.com/weAutomateEverything/prognosisHalBot/sourceMonitor"
-	"github.com/weAutomateEverything/prognosisHalBot/client"
-	httptransport "github.com/go-openapi/runtime/client"
 
 	"github.com/go-openapi/strfmt"
 )
@@ -29,10 +29,11 @@ func main() {
 	monitorStore := monitor.NewMongoStore(db)
 	sourceStore := sourceMonitor.NewMontoSourceSinkStore(db)
 	transport := httptransport.New(os.Getenv("HAL_ENDPOINT"), "", nil)
+	transport.SetDebug(true)
 
-	c := client.New(transport,strfmt.Default)
+	c := client.New(transport, strfmt.Default)
 
-	monitor.NewService(c,monitorStore,monitor.NewResponseCode91Monitor(),monitor.NewFailureRateMonitor(),sourceMonitor.NewSourceSinkMonitor(sourceStore))
+	monitor.NewService(c, monitorStore, monitor.NewResponseCode91Monitor(), monitor.NewFailureRateMonitor(), sourceMonitor.NewSourceSinkMonitor(sourceStore))
 
 	httpLogger := log.With(logger, "component", "http")
 
