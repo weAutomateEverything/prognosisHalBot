@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	logger2 "github.com/go-openapi/runtime/logger"
 	"github.com/go-openapi/strfmt"
 )
 
@@ -30,6 +31,7 @@ func main() {
 	sourceStore := sourceMonitor.NewMontoSourceSinkStore(db)
 	transport := httptransport.New(os.Getenv("HAL_ENDPOINT"), "", nil)
 	transport.SetDebug(true)
+	transport.SetLogger(logger2.StandardLogger{})
 
 	c := client.New(transport, strfmt.Default)
 
