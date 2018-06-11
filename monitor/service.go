@@ -398,9 +398,9 @@ func getPassword() string {
 	return os.Getenv("PROGNOSIS_PASSWORD")
 }
 
-func getChatGroup() int64 {
+func getChatGroup() uint32 {
 	s := os.Getenv("CHAT_GROUP")
-	u, err := strconv.ParseInt(s, 10, 32)
+	u, err := strconv.ParseUint(s, 10, 32)
 	if err != nil {
 		panic(fmt.Sprintf("CHAT_GROUP has not been set.. Error %v", err.Error()))
 	}
