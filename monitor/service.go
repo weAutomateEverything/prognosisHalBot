@@ -7,16 +7,19 @@ import (
 	"net/url"
 	"strings"
 	"log"
-	"github.com/weAutomateEverything/go2hal/callout"
-	"golang.org/x/net/context"
-	"github.com/weAutomateEverything/go2hal/alert"
 	"fmt"
 	"encoding/json"
-	"github.com/pkg/errors"
-	"github.com/kyokomi/emoji"
 	"github.com/antchfx/htmlquery"
 	"crypto/tls"
 	"github.com/ernesto-jimenez/httplogger"
+	"github.com/weAutomateEverything/prognosisHalBot/client"
+	"github.com/weAutomateEverything/prognosisHalBot/client/alert"
+	"golang.org/x/net/context"
+	"strconv"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/kyokomi/emoji"
+	"github.com/weAutomateEverything/prognosisHalBot/client/operations"
+	"github.com/weAutomateEverything/prognosisHalBot/models"
 )
 
 type Monitor interface {
@@ -28,9 +31,8 @@ type Service interface {
 }
 
 type service struct {
-	callout callout.Service
-	alert   alert.Service
 	store   Store
+	hal *client.GO2HAL
 
 	monitors map[string]Monitor
 
@@ -42,11 +44,10 @@ type service struct {
 	techErrCount int
 }
 
-func NewService(callout callout.Service, alert alert.Service, store Store, monitors ... Monitor) Service {
+func NewService(hal *client.GO2HAL, store Store, monitors ... Monitor) Service {
 	s := service{
-		alert:   alert,
-		callout: callout,
 		store:   store,
+		hal:hal,
 	}
 
 	s.monitors = map[string]Monitor{}
@@ -60,6 +61,13 @@ func NewService(callout callout.Service, alert alert.Service, store Store, monit
 		panic("CONFIG_URL environment variable is not set.")
 	}
 	var configs []environment
+	logger := newLogger()
+
+	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	http.DefaultClient.Transport = httplogger.NewLoggedTransport(http.DefaultTransport, logger)
+	http.DefaultClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
 
 	resp, err := http.Get(cfg)
 	if err != nil {
@@ -110,14 +118,21 @@ func (s *service) checkPrognosis() {
 			if !ok {
 				s.techErrCount++
 				if s.techErrCount == 10 {
-					s.alert.SendError(context.TODO(), errors.New("10 failures detected. Attempting login to find a new host"))
-					s.getLoginCookie()
+					s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
+						Context:context.TODO(),
+						Chatid: getChatGroup(),
+						Message:aws.String("10 failures detected. Attempting login to find a new host"),
+					})
 					continue
 				}
 			}
 			s.techErrCount = 0
 			//If the error is not a NoResultsError, it means we have another technical error
-			s.alert.SendError(context.TODO(), err)
+			s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
+				Context:context.TODO(),
+				Chatid: getChatGroup(),
+				Message:aws.String(err.Error()),
+			})
 			continue
 		}
 		s.techErrCount = 0
@@ -127,19 +142,36 @@ func (s *service) checkPrognosis() {
 			err := s.store.increaseCount(monitor.Id)
 			if err != nil {
 				log.Println(err)
-				s.alert.SendError(context.TODO(), err)
+				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
+					Context:context.TODO(),
+					Chatid: getChatGroup(),
+					Message:aws.String(err.Error()),
+				})
 			}
 			count, err := s.store.getCount(monitor.Id)
 
 			if err != nil {
 				log.Println(err)
-				s.alert.SendError(context.TODO(), err)
+				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
+					Context:context.TODO(),
+					Chatid: getChatGroup(),
+					Message:aws.String(err.Error()),
+				})
 			}
-			s.alert.SendAlert(context.TODO(), emoji.Sprintf(":warning: %v, count %v", failmsg, count))
+			s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
+				Context:context.TODO(),
+				Chatid: getChatGroup(),
+				Message:aws.String(emoji.Sprintf(":warning: %v, count %v", failmsg, count)),
+			})
 			if count == 10 {
-				v := map[string]string{}
-				v["Link"] = failmsg
-				s.callout.InvokeCallout(context.TODO(), "Prognosis Issue Detected", failmsg,v)
+				s.hal.Operations.InvokeCallout(&operations.InvokeCalloutParams{
+					Chatid:getChatGroup(),
+					Context:context.TODO(),
+					Body:&models.SendCalloutRequest{
+						Message: aws.String(fmt.Sprintf("Prognosis Issue Detected. %v",failmsg)),
+						Title:aws.String(failmsg),
+					},
+				})
 			}
 			return
 		} else {
@@ -162,11 +194,19 @@ func (s *service) getLoginCookie() error {
 			resp, err := http.DefaultClient.Do(req)
 
 			if err != nil {
-				s.alert.SendError(context.TODO(), err)
+				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
+					Context:context.TODO(),
+					Chatid: getChatGroup(),
+					Message:aws.String(err.Error()),
+				})
 				continue
 			}
 			if len(resp.Cookies()) == 0 {
-				s.alert.SendError(context.TODO(), errors.New("No cookies found on response"))
+				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
+					Context:context.TODO(),
+					Chatid: getChatGroup(),
+					Message:aws.String("No cookie found on response"),
+				})
 				continue
 			}
 			s.currentEnv = i
@@ -174,7 +214,11 @@ func (s *service) getLoginCookie() error {
 			s.cookie = resp.Cookies()
 			return nil
 		}
-		s.alert.SendError(context.TODO(), errors.New("Unable to successfully log into prognosis... will try again in 60 seconds"))
+		s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
+			Context:context.TODO(),
+			Chatid: getChatGroup(),
+			Message:aws.String("Unable to successfully log into prognosis... will try again in 60 seconds"),
+		})
 		time.Sleep(60 * time.Second)
 	}
 	return nil
@@ -352,7 +396,15 @@ func getUsername() string {
 
 func getPassword() string {
 	return os.Getenv("PROGNOSIS_PASSWORD")
+}
 
+func getChatGroup() int64 {
+	s := os.Getenv("CHAT_GROUP")
+	u, err := strconv.ParseInt(s,10,32)
+	if err != nil {
+		panic("CHAT_GROUP has not been set")
+	}
+	return u
 }
 
 type NoResultsError struct {
@@ -367,9 +419,6 @@ func (NoResultsError) RuntimeError() {
 
 }
 
-type config struct {
-	Environments []environment
-}
 
 type environment struct {
 	Address  string
