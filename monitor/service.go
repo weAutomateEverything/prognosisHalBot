@@ -404,7 +404,7 @@ func getChatGroup() uint32 {
 	if err != nil {
 		panic(fmt.Sprintf("CHAT_GROUP has not been set.. Error %v", err.Error()))
 	}
-	return u
+	return uint32(u)
 }
 
 type NoResultsError struct {
