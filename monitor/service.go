@@ -31,8 +31,8 @@ type Service interface {
 }
 
 type service struct {
-	store   Store
-	hal *client.GO2HAL
+	store Store
+	hal   *client.GO2HAL
 
 	monitors map[string]Monitor
 
@@ -46,8 +46,8 @@ type service struct {
 
 func NewService(hal *client.GO2HAL, store Store, monitors ... Monitor) Service {
 	s := service{
-		store:   store,
-		hal:hal,
+		store: store,
+		hal:   hal,
 	}
 
 	s.monitors = map[string]Monitor{}
@@ -119,9 +119,9 @@ func (s *service) checkPrognosis() {
 				s.techErrCount++
 				if s.techErrCount == 10 {
 					s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-						Context:context.TODO(),
-						Chatid: getChatGroup(),
-						Message:aws.String("10 failures detected. Attempting login to find a new host"),
+						Context: context.TODO(),
+						Chatid:  getChatGroup(),
+						Message: aws.String("10 failures detected. Attempting login to find a new host"),
 					})
 					continue
 				}
@@ -129,9 +129,9 @@ func (s *service) checkPrognosis() {
 			s.techErrCount = 0
 			//If the error is not a NoResultsError, it means we have another technical error
 			s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-				Context:context.TODO(),
-				Chatid: getChatGroup(),
-				Message:aws.String(err.Error()),
+				Context: context.TODO(),
+				Chatid:  getChatGroup(),
+				Message: aws.String(err.Error()),
 			})
 			continue
 		}
@@ -143,9 +143,9 @@ func (s *service) checkPrognosis() {
 			if err != nil {
 				log.Println(err)
 				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-					Context:context.TODO(),
-					Chatid: getChatGroup(),
-					Message:aws.String(err.Error()),
+					Context: context.TODO(),
+					Chatid:  getChatGroup(),
+					Message: aws.String(err.Error()),
 				})
 			}
 			count, err := s.store.getCount(monitor.Id)
@@ -153,23 +153,23 @@ func (s *service) checkPrognosis() {
 			if err != nil {
 				log.Println(err)
 				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-					Context:context.TODO(),
-					Chatid: getChatGroup(),
-					Message:aws.String(err.Error()),
+					Context: context.TODO(),
+					Chatid:  getChatGroup(),
+					Message: aws.String(err.Error()),
 				})
 			}
 			s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-				Context:context.TODO(),
-				Chatid: getChatGroup(),
-				Message:aws.String(emoji.Sprintf(":warning: %v, count %v", failmsg, count)),
+				Context: context.TODO(),
+				Chatid:  getChatGroup(),
+				Message: aws.String(emoji.Sprintf(":warning: %v, count %v", failmsg, count)),
 			})
 			if count == 10 {
 				s.hal.Operations.InvokeCallout(&operations.InvokeCalloutParams{
-					Chatid:getChatGroup(),
-					Context:context.TODO(),
-					Body:&models.SendCalloutRequest{
-						Message: aws.String(fmt.Sprintf("Prognosis Issue Detected. %v",failmsg)),
-						Title:aws.String(failmsg),
+					Chatid:  getChatGroup(),
+					Context: context.TODO(),
+					Body: &models.SendCalloutRequest{
+						Message: aws.String(fmt.Sprintf("Prognosis Issue Detected. %v", failmsg)),
+						Title:   aws.String(failmsg),
 					},
 				})
 			}
@@ -195,17 +195,17 @@ func (s *service) getLoginCookie() error {
 
 			if err != nil {
 				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-					Context:context.TODO(),
-					Chatid: getChatGroup(),
-					Message:aws.String(err.Error()),
+					Context: context.TODO(),
+					Chatid:  getChatGroup(),
+					Message: aws.String(err.Error()),
 				})
 				continue
 			}
 			if len(resp.Cookies()) == 0 {
 				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-					Context:context.TODO(),
-					Chatid: getChatGroup(),
-					Message:aws.String("No cookie found on response"),
+					Context: context.TODO(),
+					Chatid:  getChatGroup(),
+					Message: aws.String("No cookie found on response"),
 				})
 				continue
 			}
@@ -215,9 +215,9 @@ func (s *service) getLoginCookie() error {
 			return nil
 		}
 		s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-			Context:context.TODO(),
-			Chatid: getChatGroup(),
-			Message:aws.String("Unable to successfully log into prognosis... will try again in 60 seconds"),
+			Context: context.TODO(),
+			Chatid:  getChatGroup(),
+			Message: aws.String("Unable to successfully log into prognosis... will try again in 60 seconds"),
 		})
 		time.Sleep(60 * time.Second)
 	}
@@ -249,23 +249,23 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 	}
 
 	count := 0
-	httpDO:
+httpDO:
 	for true {
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			return false,"",err
+			return false, "", err
 		}
 		var data map[string]interface{}
 
 		err = json.NewDecoder(resp.Body).Decode(&data)
 		resp.Body.Close()
 		if err != nil {
-			return false,"",err
+			return false, "", err
 		}
 
 		if data == nil {
 			err = fmt.Errorf("data nil for dashboard %v, id %v", monitor.Dashboard, monitor.Id)
-			return false,"",err
+			return false, "", err
 		}
 
 		//First the root element - thios should include a item called Data
@@ -276,9 +276,9 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 					if key == "Data" {
 						if len(t.([]interface{})) == 0 {
 							count++
-							if count == 10  {
+							if count == 10 {
 								err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 0, so no real data", monitor.Dashboard, monitor.Id)}
-								return false,"",err
+								return false, "", err
 							}
 							time.Sleep(2 * time.Second)
 							continue httpDO
@@ -286,7 +286,7 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 						d := t.([]interface{})[0].([]interface{})
 						if len(d) == 2 {
 							err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 2, so no real data", monitor.Dashboard, monitor.Id)}
-							return false,"",err
+							return false, "", err
 						}
 						var input [][]string
 						for _, row := range d[2:] {
@@ -400,9 +400,9 @@ func getPassword() string {
 
 func getChatGroup() int64 {
 	s := os.Getenv("CHAT_GROUP")
-	u, err := strconv.ParseInt(s,10,32)
+	u, err := strconv.ParseInt(s, 10, 32)
 	if err != nil {
-		panic("CHAT_GROUP has not been set")
+		panic(fmt.Sprintf("CHAT_GROUP has not been set.. Error %v", err.Error()))
 	}
 	return u
 }
@@ -418,7 +418,6 @@ func (e NoResultsError) Error() string {
 func (NoResultsError) RuntimeError() {
 
 }
-
 
 type environment struct {
 	Address  string
