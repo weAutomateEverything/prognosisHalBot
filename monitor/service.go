@@ -400,7 +400,7 @@ func getPassword() string {
 
 func getChatGroup() int64 {
 	s := os.Getenv("CHAT_GROUP")
-	u, err := strconv.ParseInt(s, 10, 32)
+	u, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
 		panic(fmt.Sprintf("CHAT_GROUP has not been set.. Error %v", err.Error()))
 	}
@@ -426,8 +426,4 @@ type environment struct {
 
 type monitors struct {
 	Type, Dashboard, Id, Name, ObjectType string
-}
-
-type input struct {
-	data map[string]interface{}
 }
