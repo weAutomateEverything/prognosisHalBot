@@ -1,25 +1,25 @@
 package monitor
 
 import (
-	"net/http"
-	"os"
-	"time"
-	"net/url"
-	"strings"
-	"log"
-	"fmt"
-	"encoding/json"
-	"github.com/antchfx/htmlquery"
 	"crypto/tls"
+	"encoding/json"
+	"fmt"
+	"github.com/antchfx/htmlquery"
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/ernesto-jimenez/httplogger"
+	"github.com/kyokomi/emoji"
 	"github.com/weAutomateEverything/prognosisHalBot/client"
 	"github.com/weAutomateEverything/prognosisHalBot/client/alert"
-	"golang.org/x/net/context"
-	"strconv"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/kyokomi/emoji"
 	"github.com/weAutomateEverything/prognosisHalBot/client/operations"
 	"github.com/weAutomateEverything/prognosisHalBot/models"
+	"golang.org/x/net/context"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+	"time"
 )
 
 type Monitor interface {
@@ -44,7 +44,7 @@ type service struct {
 	techErrCount int
 }
 
-func NewService(hal *client.GO2HAL, store Store, monitors ... Monitor) Service {
+func NewService(hal *client.GO2HAL, store Store, monitors ...Monitor) Service {
 	s := service{
 		store: store,
 		hal:   hal,
@@ -84,6 +84,12 @@ func NewService(hal *client.GO2HAL, store Store, monitors ... Monitor) Service {
 	s.config = configs
 
 	go func() { s.runChecks() }()
+
+	s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
+		Context: context.TODO(),
+		Chatid:  getChatGroup(),
+		Message: aws.String("Prognosis bot online"),
+	})
 
 	return s
 }
