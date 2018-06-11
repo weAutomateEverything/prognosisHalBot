@@ -86,7 +86,7 @@ func NewService(hal *client.GO2HAL, store Store, monitors ...Monitor) Service {
 	go func() { s.runChecks() }()
 
 	r, err := s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-		Context: context.TODO(),
+		Context: getTimeout(),
 		Chatid:  getChatGroup(),
 		Message: aws.String("Prognosis bot online"),
 	})
@@ -132,7 +132,7 @@ func (s *service) checkPrognosis() {
 				s.techErrCount++
 				if s.techErrCount == 10 {
 					s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-						Context: context.TODO(),
+						Context: getTimeout(),
 						Chatid:  getChatGroup(),
 						Message: aws.String("10 failures detected. Attempting login to find a new host"),
 					})
@@ -142,7 +142,7 @@ func (s *service) checkPrognosis() {
 			s.techErrCount = 0
 			//If the error is not a NoResultsError, it means we have another technical error
 			s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-				Context: context.TODO(),
+				Context: getTimeout(),
 				Chatid:  getChatGroup(),
 				Message: aws.String(err.Error()),
 			})
@@ -156,7 +156,7 @@ func (s *service) checkPrognosis() {
 			if err != nil {
 				log.Println(err)
 				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-					Context: context.TODO(),
+					Context: getTimeout(),
 					Chatid:  getChatGroup(),
 					Message: aws.String(err.Error()),
 				})
@@ -166,20 +166,20 @@ func (s *service) checkPrognosis() {
 			if err != nil {
 				log.Println(err)
 				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-					Context: context.TODO(),
+					Context: getTimeout(),
 					Chatid:  getChatGroup(),
 					Message: aws.String(err.Error()),
 				})
 			}
 			s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-				Context: context.TODO(),
+				Context: getTimeout(),
 				Chatid:  getChatGroup(),
 				Message: aws.String(emoji.Sprintf(":warning: %v, count %v", failmsg, count)),
 			})
 			if count == 10 {
 				s.hal.Operations.InvokeCallout(&operations.InvokeCalloutParams{
 					Chatid:  getChatGroup(),
-					Context: context.TODO(),
+					Context: getTimeout(),
 					Body: &models.SendCalloutRequest{
 						Message: aws.String(fmt.Sprintf("Prognosis Issue Detected. %v", failmsg)),
 						Title:   aws.String(failmsg),
@@ -208,7 +208,7 @@ func (s *service) getLoginCookie() error {
 
 			if err != nil {
 				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-					Context: context.TODO(),
+					Context: getTimeout(),
 					Chatid:  getChatGroup(),
 					Message: aws.String(err.Error()),
 				})
@@ -216,7 +216,7 @@ func (s *service) getLoginCookie() error {
 			}
 			if len(resp.Cookies()) == 0 {
 				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-					Context: context.TODO(),
+					Context: getTimeout(),
 					Chatid:  getChatGroup(),
 					Message: aws.String("No cookie found on response"),
 				})
@@ -228,7 +228,7 @@ func (s *service) getLoginCookie() error {
 			return nil
 		}
 		s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-			Context: context.TODO(),
+			Context: getTimeout(),
 			Chatid:  getChatGroup(),
 			Message: aws.String("Unable to successfully log into prognosis... will try again in 60 seconds"),
 		})
@@ -439,4 +439,9 @@ type environment struct {
 
 type monitors struct {
 	Type, Dashboard, Id, Name, ObjectType string
+}
+
+func getTimeout() context.Context {
+	c, _ := context.WithTimeout(context.TODO(), 3*time.Second)
+	return c
 }
