@@ -91,11 +91,11 @@ func NewService(hal *client.GO2HAL, store Store, monitors ...Monitor) Service {
 		Message: aws.String("Prognosis bot online"),
 	})
 	if r != nil {
-		fmt.Printf("hal responce %v", r.Error())
+		log.Printf("hal responce %v", r.Error())
 	}
 
 	if err != nil {
-		fmt.Printf("hall error %v", err.Error())
+		log.Printf("hall error %v", err.Error())
 	}
 
 	return s
@@ -442,6 +442,6 @@ type monitors struct {
 }
 
 func getTimeout() context.Context {
-	c, _ := context.WithTimeout(context.TODO(), 3*time.Second)
+	c, _ := context.WithTimeout(context.TODO(), 30*time.Second)
 	return c
 }
