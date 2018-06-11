@@ -398,13 +398,13 @@ func getPassword() string {
 	return os.Getenv("PROGNOSIS_PASSWORD")
 }
 
-func getChatGroup() uint32 {
+func getChatGroup() int64 {
 	s := os.Getenv("CHAT_GROUP")
-	u, err := strconv.ParseUint(s, 10, 32)
+	u, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
 		panic(fmt.Sprintf("CHAT_GROUP has not been set.. Error %v", err.Error()))
 	}
-	return uint32(u)
+	return u
 }
 
 type NoResultsError struct {
@@ -426,8 +426,4 @@ type environment struct {
 
 type monitors struct {
 	Type, Dashboard, Id, Name, ObjectType string
-}
-
-type input struct {
-	data map[string]interface{}
 }
