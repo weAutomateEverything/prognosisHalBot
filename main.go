@@ -5,19 +5,17 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/go-kit/kit/log"
 
-	"github.com/weAutomateEverything/go2hal/callout"
-	"github.com/weAutomateEverything/go2hal/alert"
-	"github.com/weAutomateEverything/go2hal/telegram"
-	"github.com/weAutomateEverything/go2hal/firstCall"
-	"github.com/weAutomateEverything/go2hal/halaws"
 	"os/signal"
 	"syscall"
 	"fmt"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"github.com/weAutomateEverything/go2hal/database"
-	"github.com/weAutomateEverything/bankldapService"
 	"net/http"
 	"github.com/weAutomateEverything/prognosisHalBot/sourceMonitor"
+	"github.com/weAutomateEverything/prognosisHalBot/client"
+	httptransport "github.com/go-openapi/runtime/client"
+
+	"github.com/go-openapi/strfmt"
 )
 
 func main() {
@@ -27,31 +25,15 @@ func main() {
 	logger = log.With(logger, "ts", log.DefaultTimestamp)
 
 	db := database.NewConnection()
-	alertStore := alert.NewStore(db)
-	telegramStore := telegram.NewMongoStore(db)
-	bankLdapStore := bankldapService.NewMongoStore(db)
+
 	monitorStore := monitor.NewMongoStore(db)
 	sourceStore := sourceMonitor.NewMontoSourceSinkStore(db)
+	transport := httptransport.New(os.Getenv("HAL_ENDPOINT"), "", nil)
 
-	authService := bankldapService.NewService(bankLdapStore)
+	c := client.New(transport,strfmt.Default)
 
-	telegramService := telegram.NewService(telegramStore, authService)
-	alertService := alert.NewService(telegramService, alertStore)
-	firstcall := firstCall.NewDefaultFirstcallService()
-	alexa := halaws.NewService(alertService)
+	monitor.NewService(c,monitorStore,monitor.NewResponseCode91Monitor(),monitor.NewFailureRateMonitor(),sourceMonitor.NewSourceSinkMonitor(sourceStore))
 
-
-	calloutService := callout.NewService(alertService, firstcall, nil, nil, alexa)
-
-	monitor.NewService(calloutService, alertService,monitorStore,monitor.NewResponseCode91Monitor(),monitor.NewFailureRateMonitor(),sourceMonitor.NewSourceSinkMonitor(sourceStore))
-
-	telegramService.RegisterCommand(alert.NewSetGroupCommand(telegramService, alertStore))
-	telegramService.RegisterCommand(alert.NewSetNonTechnicalGroupCommand(telegramService, alertStore))
-	telegramService.RegisterCommand(alert.NewSetHeartbeatGroupCommand(telegramService, alertStore))
-	telegramService.RegisterCommand(telegram.NewHelpCommand(telegramService))
-
-	telegramService.RegisterCommand(bankldapService.NewRegisterCommand(telegramService, bankLdapStore))
-	telegramService.RegisterCommand(bankldapService.NewTokenCommand(telegramService, bankLdapStore))
 	httpLogger := log.With(logger, "component", "http")
 
 	mux := http.NewServeMux()
