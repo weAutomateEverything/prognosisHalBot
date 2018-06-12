@@ -1,13 +1,13 @@
 package sourceMonitor
 
 import (
-	"github.com/go-kit/kit/endpoint"
-	"context"
 	"bufio"
+	"context"
+	"github.com/go-kit/kit/endpoint"
 	"strings"
 )
 
-func makeAddNodeHours(s Store) endpoint.Endpoint{
+func makeAddNodeHours(s Store) endpoint.Endpoint {
 	return func(ctx context.Context, request interface{}) (response interface{}, err error) {
 		req := request.(string)
 		scanner := bufio.NewScanner(strings.NewReader(req))
@@ -23,9 +23,17 @@ func makeAddNodeHours(s Store) endpoint.Endpoint{
 			afterHours := strings.ToUpper(tokens[3])
 			afterHoursCritical := tokens[4]
 
-			s.setNodeTimes(node,businessHours,businessCritical,afterHours,afterHoursCritical)
+			s.setNodeTimes(node, businessHours, businessCritical, afterHours, afterHoursCritical)
 
 		}
+		return
+	}
+}
+
+func makeSetNodeMax(s Store) endpoint.Endpoint {
+	return func(ctx context.Context, request interface{}) (response interface{}, err error) {
+		req := request.([]nodeMax)
+		err = s.setMaxConnections(req)
 		return
 	}
 }

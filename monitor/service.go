@@ -85,19 +85,6 @@ func NewService(hal *client.GO2HAL, store Store, monitors ...Monitor) Service {
 
 	go func() { s.runChecks() }()
 
-	r, err := s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-		Context: getTimeout(),
-		Chatid:  getChatGroup(),
-		Message: aws.String("Prognosis bot online"),
-	})
-	if r != nil {
-		log.Printf("hal responce %v", r.Error())
-	}
-
-	if err != nil {
-		log.Printf("hall error %v", err.Error())
-	}
-
 	return s
 }
 
