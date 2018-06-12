@@ -1,18 +1,43 @@
 package sourceMonitor
 
-import "gopkg.in/mgo.v2"
+import (
+	"gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
+)
 
 type Store interface {
-	setMaxValue(node string, maxvalue int)
-	getMaxValue(node string) int
-
-	setNodeTimes(nodename, businessHours, businessCritical,afterHours, afterCticical string)
+	setNodeTimes(nodename, businessHours, businessCritical, afterHours, afterCticical string)
 	GetNodeTimes() []nodeHours
 
+	getMaxConnections() []nodeMax
+	setMaxConnections([]nodeMax) error
 }
 
 type mongoStore struct {
 	db *mgo.Database
+}
+
+func (s mongoStore) getMaxConnections() (result []nodeMax) {
+	c := s.db.C("max_connections")
+	c.Find(nil).All(&result)
+	return
+}
+
+func (s mongoStore) setMaxConnections(req []nodeMax) (err error) {
+	c := s.db.C("max_connections")
+	_, err = c.RemoveAll(bson.M{"id": "*"})
+	if err != nil {
+		return
+	}
+
+	for _, r := range req {
+		err = c.Insert(r)
+		if err != nil {
+			return
+		}
+	}
+	return
+
 }
 
 func (s mongoStore) GetNodeTimes() []nodeHours {
@@ -21,43 +46,31 @@ func (s mongoStore) GetNodeTimes() []nodeHours {
 	return result
 }
 
-func (mongoStore) setMaxValue(node string, maxvalue int) {
-	panic("implement me")
-}
-
-func (mongoStore) getMaxValue(node string) int {
-	panic("implement me")
-}
-
-func (s *mongoStore) setNodeTimes(nodename, businessHours, businessCritical,afterHours, afterCticical string){
+func (s *mongoStore) setNodeTimes(nodename, businessHours, businessCritical, afterHours, afterCticical string) {
 	n := nodeHours{
-		AfterHours:afterHours,
-		AfterHoursImpact:afterCticical,
-		BusinessHours:businessHours,
-		BusinessHoursImpact:businessCritical,
-		Nodename:nodename,
+		AfterHours:          afterHours,
+		AfterHoursImpact:    afterCticical,
+		BusinessHours:       businessHours,
+		BusinessHoursImpact: businessCritical,
+		Nodename:            nodename,
 	}
 
 	s.db.C("node_hours").Insert(&n)
 }
 
-
-
 type nodeHours struct {
-	Nodename string
-	BusinessHours string
+	Nodename            string
+	BusinessHours       string
 	BusinessHoursImpact string
-	AfterHours string
-	AfterHoursImpact string
+	AfterHours          string
+	AfterHoursImpact    string
 }
 
 type nodeMax struct {
 	Nodename string
-	Maxval int
+	Maxval   int
 }
 
-func NewMontoSourceSinkStore(db *mgo.Database) Store{
-	return &mongoStore{db:db}
+func NewMontoSourceSinkStore(db *mgo.Database) Store {
+	return &mongoStore{db: db}
 }
-
-
