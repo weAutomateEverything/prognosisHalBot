@@ -3,7 +3,12 @@ package sourceMonitor
 import (
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
+	"time"
 )
+
+func NewMontoSourceSinkStore(db *mgo.Database) Store {
+	return &mongoStore{db: db}
+}
 
 type Store interface {
 	setNodeTimes(nodename, businessHours, businessCritical, afterHours, afterCticical string)
@@ -11,10 +16,23 @@ type Store interface {
 
 	getMaxConnections() []nodeMax
 	setMaxConnections([]nodeMax) error
+
+	saveConnectionCount(name string, value int64) error
 }
 
 type mongoStore struct {
 	db *mgo.Database
+}
+
+func (s mongoStore) saveConnectionCount(name string, value int64) error {
+	c := s.db.C("connection_count")
+	k := connectionCount{
+		Count:      value,
+		Connection: name,
+		Date:       time.Now(),
+	}
+	return c.Insert(k)
+
 }
 
 func (s mongoStore) getMaxConnections() (result []nodeMax) {
@@ -71,6 +89,8 @@ type nodeMax struct {
 	Maxval   int
 }
 
-func NewMontoSourceSinkStore(db *mgo.Database) Store {
-	return &mongoStore{db: db}
+type connectionCount struct {
+	Date       time.Time
+	Connection string
+	Count      int64
 }
