@@ -39,7 +39,7 @@ func (a *Client) InvokeCallout(params *InvokeCalloutParams) (*InvokeCalloutOK, e
 	result, err := a.transport.Submit(&runtime.ClientOperation{
 		ID:                 "invokeCallout",
 		Method:             "POST",
-		PathPattern:        "/callout/{chatid}",
+		PathPattern:        "/api/callout/{chatid}",
 		ProducesMediaTypes: []string{"application/json"},
 		ConsumesMediaTypes: []string{"application/json"},
 		Schemes:            []string{"http"},

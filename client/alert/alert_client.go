@@ -92,7 +92,7 @@ func (a *Client) SendTextAlert(params *SendTextAlertParams) (*SendTextAlertOK, e
 	result, err := a.transport.Submit(&runtime.ClientOperation{
 		ID:                 "sendTextAlert",
 		Method:             "POST",
-		PathPattern:        "/api//alert/{chatid}",
+		PathPattern:        "/api/alert/{chatid}",
 		ProducesMediaTypes: []string{"application/json"},
 		ConsumesMediaTypes: []string{"text/plain"},
 		Schemes:            []string{"http"},
