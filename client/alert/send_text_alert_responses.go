@@ -57,7 +57,7 @@ type SendTextAlertOK struct {
 }
 
 func (o *SendTextAlertOK) Error() string {
-	return fmt.Sprintf("[POST /api//alert/{chatid}][%d] sendTextAlertOK ", 200)
+	return fmt.Sprintf("[POST /api/alert/{chatid}][%d] sendTextAlertOK ", 200)
 }
 
 func (o *SendTextAlertOK) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -88,7 +88,7 @@ func (o *SendTextAlertDefault) Code() int {
 }
 
 func (o *SendTextAlertDefault) Error() string {
-	return fmt.Sprintf("[POST /api//alert/{chatid}][%d] sendTextAlert default  %+v", o._statusCode, o.Payload)
+	return fmt.Sprintf("[POST /api/alert/{chatid}][%d] sendTextAlert default  %+v", o._statusCode, o.Payload)
 }
 
 func (o *SendTextAlertDefault) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {

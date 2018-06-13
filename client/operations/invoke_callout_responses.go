@@ -57,7 +57,7 @@ type InvokeCalloutOK struct {
 }
 
 func (o *InvokeCalloutOK) Error() string {
-	return fmt.Sprintf("[POST /callout/{chatid}][%d] invokeCalloutOK ", 200)
+	return fmt.Sprintf("[POST /api/callout/{chatid}][%d] invokeCalloutOK ", 200)
 }
 
 func (o *InvokeCalloutOK) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -88,7 +88,7 @@ func (o *InvokeCalloutDefault) Code() int {
 }
 
 func (o *InvokeCalloutDefault) Error() string {
-	return fmt.Sprintf("[POST /callout/{chatid}][%d] invokeCallout default  %+v", o._statusCode, o.Payload)
+	return fmt.Sprintf("[POST /api/callout/{chatid}][%d] invokeCallout default  %+v", o._statusCode, o.Payload)
 }
 
 func (o *InvokeCalloutDefault) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
