@@ -10,14 +10,12 @@ import (
 )
 
 type sourceSinkMonitor struct {
-	nodeTimes     []nodeHours
-	nodeMaxValues []nodeMax
+	store Store
 }
 
 func NewSourceSinkMonitor(store Store) monitor.Monitor {
 	return &sourceSinkMonitor{
-		nodeTimes:     store.GetNodeTimes(),
-		nodeMaxValues: store.getMaxConnections(),
+		store: store,
 	}
 }
 
@@ -48,7 +46,7 @@ func (s sourceSinkMonitor) checkConnected(row []string) (failure bool, failurems
 	node := strings.ToUpper(row[0])
 	log.Printf("%v detected as down", node)
 
-	for _, times := range s.nodeTimes {
+	for _, times := range s.store.GetNodeTimes() {
 		if strings.Index(times.Nodename, node) != -1 {
 			if s.checkSend(times) {
 				failure = true
@@ -60,13 +58,18 @@ func (s sourceSinkMonitor) checkConnected(row []string) (failure bool, failurems
 }
 
 func (s sourceSinkMonitor) checkMaxConnections(row []string) (failure bool, failuremsg string) {
-	for _, max := range s.nodeMaxValues {
+	for _, max := range s.store.getMaxConnections() {
 		if row[0] == max.Nodename {
 			v := row[2]
 			connections, err := strconv.ParseInt(v, 10, 64)
 			if err != nil {
 				log.Printf("unable to parse %v as a int for max value", v)
 				return
+			}
+			err = s.store.saveConnectionCount(max.Nodename, connections)
+			if err != nil {
+				log.Printf("There was an error saving the connection count %v", err)
+				err = nil
 			}
 			if connections > int64(max.Maxval) {
 				failure = true
