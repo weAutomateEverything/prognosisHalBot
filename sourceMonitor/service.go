@@ -80,6 +80,10 @@ func (s sourceSinkMonitor) checkMaxConnections(row []string) (failure bool, fail
 				err = nil
 			}
 			avg, err := s.store.getConnectionCount(max.Nodename)
+			if err != nil {
+				log.Printf("No conneciton found found")
+				return
+			}
 
 			if connections/avg > 2 {
 				failuremsg = fmt.Sprintf("Node %v has breached the maximum threshold of %v. Current connections are %v. Normal connection count is %v", max.Nodename, max.Maxval, connections, avg)
