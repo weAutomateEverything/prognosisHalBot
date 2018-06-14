@@ -28,7 +28,7 @@ type mongoStore struct {
 
 func (s mongoStore) getConnectionCount(name string) (avg int64, err error) {
 	c := s.db.C("connection_count")
-	key := fmt.Sprintf("%v%v-%v", time.Now().Hour(), time.Now().Minute(), name)
+	key := fmt.Sprintf("%2d%2d-%v", time.Now().Hour(), time.Now().Minute(), name)
 	q := c.FindId(key)
 	count, err := q.Count()
 	if err != nil {
@@ -52,7 +52,7 @@ func (s mongoStore) getConnectionCount(name string) (avg int64, err error) {
 
 func (s mongoStore) saveConnectionCount(name string, value int64) error {
 	c := s.db.C("connection_count")
-	key := fmt.Sprintf("%v%v-%v", time.Now().Hour(), time.Now().Minute(), name)
+	key := fmt.Sprintf("%2d%2d-%v", time.Now().Hour(), time.Now().Minute(), name)
 	q := c.FindId(key)
 	count, err := q.Count()
 	if err != nil {
