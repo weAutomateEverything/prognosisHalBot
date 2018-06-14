@@ -138,6 +138,13 @@ func (s *service) checkPrognosis() {
 		s.techErrCount = 0
 
 		//If the current run has failed, but we are not already in a failed state, invoke callout. This is to prevent callout from being invoked for every error.
+		if failmsg != "" {
+			s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
+				Context: getTimeout(),
+				Chatid:  getChatGroup(),
+				Message: aws.String(failmsg),
+			})
+		}
 		if failed {
 			err := s.store.increaseCount(monitor.Id)
 			if err != nil {
@@ -161,7 +168,7 @@ func (s *service) checkPrognosis() {
 			s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
 				Context: getTimeout(),
 				Chatid:  getChatGroup(),
-				Message: aws.String(emoji.Sprintf(":warning: %v, count %v", failmsg, count)),
+				Message: aws.String(emoji.Sprintf("Increasing count %v", count)),
 			})
 			if count == 10 {
 				s.hal.Operations.InvokeCallout(&operations.InvokeCalloutParams{
