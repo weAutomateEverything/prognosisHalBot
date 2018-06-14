@@ -24,15 +24,23 @@ func (s sourceSinkMonitor) GetName() string {
 }
 
 func (s sourceSinkMonitor) CheckResponse(input [][]string) (failure bool, failuremsg string, err error) {
-	for _, row := range input {
-		failure, failuremsg = s.checkConnected(row)
-		if failure {
-			return
-		}
 
-		failure, failuremsg = s.checkMaxConnections(row)
-		if failure {
-			return
+	for _, row := range input {
+		failed, msg := s.checkConnected(row)
+		if failed {
+			failure = true
+		}
+		if msg != "" {
+			failuremsg = failuremsg + msg + "\n"
+		}
+	}
+	for _, row := range input {
+		failed, msg := s.checkMaxConnections(row)
+		if failed {
+			failure = true
+		}
+		if msg != "" {
+			failuremsg = failuremsg + msg + "\n"
 		}
 	}
 	return
@@ -71,14 +79,20 @@ func (s sourceSinkMonitor) checkMaxConnections(row []string) (failure bool, fail
 				log.Printf("There was an error saving the connection count %v", err)
 				err = nil
 			}
-			if connections > int64(max.Maxval) {
-				failure = true
-				failuremsg = fmt.Sprintf("Node %v has breached the maximum threshold of %v. Current connections are %v", max.Nodename, max.Maxval, connections)
-				return
+			avg, err := s.store.getConnectionCount(max.Nodename)
+
+			if connections/avg > 2 {
+				failuremsg = fmt.Sprintf("Node %v has breached the maximum threshold of %v. Current connections are %v. Normal connection count is %v", max.Nodename, max.Maxval, connections, avg)
+				if connections > int64(max.Maxval) {
+					failure = true
+				}
 			}
+			return
+
 		}
 	}
 	return
+
 }
 
 func (s sourceSinkMonitor) checkSend(node nodeHours) bool {

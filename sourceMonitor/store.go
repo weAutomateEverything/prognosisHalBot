@@ -1,6 +1,7 @@
 package sourceMonitor
 
 import (
+	"fmt"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"time"
@@ -18,20 +19,65 @@ type Store interface {
 	setMaxConnections([]nodeMax) error
 
 	saveConnectionCount(name string, value int64) error
+	getConnectionCount(name string) (int64, error)
 }
 
 type mongoStore struct {
 	db *mgo.Database
 }
 
+func (s mongoStore) getConnectionCount(name string) (avg int64, err error) {
+	c := s.db.C("connection_count")
+	key := fmt.Sprintf("%v%v-%v", time.Now().Hour(), time.Now().Minute(), name)
+	q := c.FindId(key)
+	count, err := q.Count()
+	if err != nil {
+		return
+	}
+
+	if count == 0 {
+		err = fmt.Errorf("no data found for %v", key)
+		return
+	}
+
+	d := connectionCount{}
+	err = q.One(&d)
+	if err != nil {
+		return
+	}
+
+	return d.Avg, nil
+
+}
+
 func (s mongoStore) saveConnectionCount(name string, value int64) error {
 	c := s.db.C("connection_count")
-	k := connectionCount{
-		Count:      value,
-		Connection: name,
-		Date:       time.Now(),
+	key := fmt.Sprintf("%v%v-%v", time.Now().Hour(), time.Now().Minute(), name)
+	q := c.FindId(key)
+	count, err := q.Count()
+	if err != nil {
+		return err
 	}
-	return c.Insert(k)
+
+	if count == 0 {
+		d := &connectionCount{
+			Time:  key,
+			Count: 1,
+			Avg:   value,
+		}
+
+		return c.Insert(d)
+	}
+
+	var d connectionCount
+	err = q.One(&d)
+	if err != nil {
+		return err
+	}
+
+	d.Avg = int64(((d.Avg * d.Count) + value) / (d.Count + 1))
+	d.Count++
+	return c.UpdateId(key, d)
 
 }
 
@@ -90,7 +136,8 @@ type nodeMax struct {
 }
 
 type connectionCount struct {
-	Date       time.Time
+	Time       string `json:"id" bson:"_id,omitempty"`
 	Connection string
+	Avg        int64
 	Count      int64
 }
