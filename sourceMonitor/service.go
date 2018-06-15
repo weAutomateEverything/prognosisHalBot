@@ -86,8 +86,10 @@ func (s sourceSinkMonitor) checkMaxConnections(row []string) (failure bool, fail
 			}
 
 			if connections/avg > 2 {
-				failuremsg = fmt.Sprintf("Node %v has breached the maximum threshold of %v. Current connections are %v. Normal connection count is %v", max.Nodename, max.Maxval, connections, avg)
+				failuremsg = fmt.Sprintf("Normally at this time I excpect node %v to have %v connections. Currently there are %v connections. ", max.Nodename, connections, avg)
 				if connections > int64(max.Maxval) {
+					failuremsg = failuremsg + fmt.Sprintf("Since there are more than %v connections, I am invoking callout", max.Maxval)
+
 					failure = true
 				}
 			}
