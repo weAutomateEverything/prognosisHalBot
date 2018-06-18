@@ -118,21 +118,13 @@ func (s *service) checkPrognosis() {
 			if !ok {
 				s.techErrCount++
 				if s.techErrCount == 10 {
-					s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-						Context: getTimeout(),
-						Chatid:  getChatGroup(),
-						Message: aws.String("10 failures detected. Attempting login to find a new host"),
-					})
+					s.sendMessage("10 failures detected. Attempting login to find a new host")
 					continue
 				}
 			}
 			s.techErrCount = 0
 			//If the error is not a NoResultsError, it means we have another technical error
-			s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-				Context: getTimeout(),
-				Chatid:  getChatGroup(),
-				Message: aws.String(err.Error()),
-			})
+			s.sendMessage(err.Error())
 			continue
 		}
 		s.techErrCount = 0
@@ -141,28 +133,16 @@ func (s *service) checkPrognosis() {
 			err := s.store.increaseCount(monitor.Id)
 			if err != nil {
 				log.Println(err)
-				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-					Context: getTimeout(),
-					Chatid:  getChatGroup(),
-					Message: aws.String(err.Error()),
-				})
+				s.sendMessage(err.Error())
 			}
 			count, err := s.store.getCount(monitor.Id)
 
 			if err != nil {
 				log.Println(err)
-				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-					Context: getTimeout(),
-					Chatid:  getChatGroup(),
-					Message: aws.String(err.Error()),
-				})
+				s.sendMessage(err.Error())
 			}
 			if count > 3 {
-				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-					Context: getTimeout(),
-					Chatid:  getChatGroup(),
-					Message: aws.String(emoji.Sprintf(":x: %v", failmsg)),
-				})
+				s.sendMessage(emoji.Sprintf(":x: %v", failmsg))
 			}
 
 			if count == 10 {
@@ -179,11 +159,7 @@ func (s *service) checkPrognosis() {
 		} else {
 			count, _ := s.store.getCount(monitor.Id)
 			if count > 3 {
-				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-					Context: getTimeout(),
-					Chatid:  getChatGroup(),
-					Message: aws.String(emoji.Sprintf(":white_check_mark: No issues detected")),
-				})
+				s.sendMessage(emoji.Sprintf(":white_check_mark: No issues detected"))
 			}
 			s.store.zeroCount(monitor.Id)
 		}
@@ -204,19 +180,11 @@ func (s *service) getLoginCookie() error {
 			resp, err := http.DefaultClient.Do(req)
 
 			if err != nil {
-				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-					Context: getTimeout(),
-					Chatid:  getChatGroup(),
-					Message: aws.String(err.Error()),
-				})
+				s.sendMessage(err.Error())
 				continue
 			}
 			if len(resp.Cookies()) == 0 {
-				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-					Context: getTimeout(),
-					Chatid:  getChatGroup(),
-					Message: aws.String("No cookie found on response"),
-				})
+				s.sendMessage("No cookie found on response")
 				continue
 			}
 			s.currentEnv = i
@@ -224,11 +192,7 @@ func (s *service) getLoginCookie() error {
 			s.cookie = resp.Cookies()
 			return nil
 		}
-		s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-			Context: getTimeout(),
-			Chatid:  getChatGroup(),
-			Message: aws.String("Unable to successfully log into prognosis... will try again in 60 seconds"),
-		})
+		s.sendMessage("Unable to successfully log into prognosis... will try again in 60 seconds")
 		time.Sleep(60 * time.Second)
 	}
 	return nil
@@ -358,14 +322,25 @@ func (s *service) getGuidForMonitor(dashboard, id string) (guid string, err erro
 		}
 	}
 	msg := fmt.Sprintf("no guid found for %v on dashboard %v. Restarting Bot", id, dashboard)
-	s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-		Context: getTimeout(),
-		Chatid:  getChatGroup(),
-		Message: aws.String(msg),
-	})
-	log.Panic(msg)
+	s.sendMessage(msg)
+	panic(msg)
 	return
 
+}
+
+func (s *service) sendMessage(message string) {
+	message = strings.Replace(message, "_", " ", 0)
+	resp, err := s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
+		Context: getTimeout(),
+		Chatid:  getChatGroup(),
+		Message: aws.String(message),
+	})
+	if err != nil {
+		log.Println(err.Error())
+	}
+	if resp != nil {
+		log.Println(resp.Error())
+	}
 }
 
 type httpLogger struct {
