@@ -2,8 +2,8 @@ package monitor
 
 import (
 	"gopkg.in/mgo.v2"
-	"time"
 	"gopkg.in/mgo.v2/bson"
+	"time"
 )
 
 type store struct {
@@ -11,30 +11,30 @@ type store struct {
 }
 
 type Store interface {
-	saveRateData(d data)
-	saveResponceCodeData([]string)
-	getCount(id string) (int, error)
-	increaseCount(id string) error
-	zeroCount(id string) error
+	SaveRateData(d data)
+	SaveResponceCodeData([]string)
+	GetCount(id string) (int, error)
+	IncreaseCount(id string) error
+	ZeroCount(id string) error
 }
 
 func NewMongoStore(db *mgo.Database) Store {
 	return &store{
-		db:db,
+		db: db,
 	}
 }
 
-func (s *store) getCount(id string) (int,error){
+func (s *store) GetCount(id string) (int, error) {
 	c := s.db.C("failurecound")
 	var r failurecount
-	err := c.Find(bson.M{"apistring":id}).One(&r)
+	err := c.Find(bson.M{"apistring": id}).One(&r)
 	return r.Count, err
 }
 
-func (s *store) increaseCount(id string) error {
+func (s *store) IncreaseCount(id string) error {
 	c := s.db.C("failurecound")
 	var r failurecount
-	q :=  c.Find(bson.M{"apistring": id})
+	q := c.Find(bson.M{"apistring": id})
 	count, err := q.Count()
 	if err != nil {
 		return err
@@ -50,15 +50,14 @@ func (s *store) increaseCount(id string) error {
 			return err
 		}
 		r.Count++
-		return c.Update(bson.M{"apistring": id},&r)
+		return c.Update(bson.M{"apistring": id}, &r)
 	}
 }
 
-
-func (s *store) zeroCount(id string) error {
+func (s *store) ZeroCount(id string) error {
 	c := s.db.C("failurecound")
 	var r failurecount
-	q :=  c.Find(bson.M{"apistring": id})
+	q := c.Find(bson.M{"apistring": id})
 	count, err := q.Count()
 	if err != nil {
 		return err
@@ -74,25 +73,25 @@ func (s *store) zeroCount(id string) error {
 			return err
 		}
 		r.Count = 0
-		return c.Update(bson.M{"apistring": id},&r)
+		return c.Update(bson.M{"apistring": id}, &r)
 	}
 }
 
-func (s *store) saveRateData(d data) {
+func (s *store) SaveRateData(d data) {
 	c := s.db.C("ratedata")
 	r := rateRecord{
-		Date:time.Now(),
-		Approved:d.approved,
-		Declined:d.declined,
-		Failed:d.failed,
+		Date:     time.Now(),
+		Approved: d.approved,
+		Declined: d.declined,
+		Failed:   d.failed,
 	}
 	c.Insert(&r)
 }
 
-func (s *store) saveResponceCodeData(d []string) {
+func (s *store) SaveResponceCodeData(d []string) {
 	c := s.db.C("responsecode")
 	r := responceCodeRecord{
-		Date:time.Now(),
+		Date:          time.Now(),
 		ResponseCodes: d,
 	}
 
@@ -100,18 +99,17 @@ func (s *store) saveResponceCodeData(d []string) {
 }
 
 type rateRecord struct {
-	Date time.Time
+	Date                       time.Time
 	Failed, Approved, Declined int
 }
 
 type responceCodeRecord struct {
-	Date time.Time
+	Date          time.Time
 	ResponseCodes []string
 }
 
 type failurecount struct {
-	ID           bson.ObjectId `bson:"_id,omitempty"`
+	ID        bson.ObjectId `bson:"_id,omitempty"`
 	Apistring string
-	Count int
-
+	Count     int
 }
