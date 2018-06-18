@@ -137,14 +137,6 @@ func (s *service) checkPrognosis() {
 		}
 		s.techErrCount = 0
 
-		//If the current run has failed, but we are not already in a failed state, invoke callout. This is to prevent callout from being invoked for every error.
-		if failmsg != "" {
-			s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-				Context: getTimeout(),
-				Chatid:  getChatGroup(),
-				Message: aws.String(failmsg),
-			})
-		}
 		if failed {
 			err := s.store.increaseCount(monitor.Id)
 			if err != nil {
@@ -165,11 +157,14 @@ func (s *service) checkPrognosis() {
 					Message: aws.String(err.Error()),
 				})
 			}
-			s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-				Context: getTimeout(),
-				Chatid:  getChatGroup(),
-				Message: aws.String(emoji.Sprintf("Increasing count %v", count)),
-			})
+			if count > 3 {
+				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
+					Context: getTimeout(),
+					Chatid:  getChatGroup(),
+					Message: aws.String(emoji.Sprintf(":x: %v", failmsg)),
+				})
+			}
+
 			if count == 10 {
 				s.hal.Operations.InvokeCallout(&operations.InvokeCalloutParams{
 					Chatid:  getChatGroup(),
@@ -182,6 +177,14 @@ func (s *service) checkPrognosis() {
 			}
 			return
 		} else {
+			count, _ := s.store.getCount(monitor.Id)
+			if count > 3 {
+				s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
+					Context: getTimeout(),
+					Chatid:  getChatGroup(),
+					Message: aws.String(emoji.Sprintf(":white_check_mark: No issues detected")),
+				})
+			}
 			s.store.zeroCount(monitor.Id)
 		}
 	}
@@ -354,7 +357,13 @@ func (s *service) getGuidForMonitor(dashboard, id string) (guid string, err erro
 			}
 		}
 	}
-	err = fmt.Errorf("no guid found for %v on dashboard %v", id, dashboard)
+	msg := fmt.Sprintf("no guid found for %v on dashboard %v. Restarting Bot", id, dashboard)
+	s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
+		Context: getTimeout(),
+		Chatid:  getChatGroup(),
+		Message: aws.String(msg),
+	})
+	log.Panic(msg)
 	return
 
 }
