@@ -61,7 +61,7 @@ func NewService(hal *client.GO2HAL, store Store, monitors ...Monitor) Service {
 		panic("CONFIG_URL environment variable is not set.")
 	}
 	var configs []environment
-	logger := newLogger()
+	logger := NewLogger()
 
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	http.DefaultClient.Transport = httplogger.NewLoggedTransport(http.DefaultTransport, logger)
@@ -89,7 +89,7 @@ func NewService(hal *client.GO2HAL, store Store, monitors ...Monitor) Service {
 }
 
 func (s *service) runChecks() {
-	logger := newLogger()
+	logger := NewLogger()
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	http.DefaultClient.Transport = httplogger.NewLoggedTransport(http.DefaultTransport, logger)
 	http.DefaultClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
@@ -130,12 +130,12 @@ func (s *service) checkPrognosis() {
 		s.techErrCount = 0
 
 		if failed {
-			err := s.store.increaseCount(monitor.Id)
+			err := s.store.IncreaseCount(monitor.Id)
 			if err != nil {
 				log.Println(err)
 				s.sendMessage(err.Error())
 			}
-			count, err := s.store.getCount(monitor.Id)
+			count, err := s.store.GetCount(monitor.Id)
 
 			if err != nil {
 				log.Println(err)
@@ -157,11 +157,11 @@ func (s *service) checkPrognosis() {
 			}
 			return
 		} else {
-			count, _ := s.store.getCount(monitor.Id)
+			count, _ := s.store.GetCount(monitor.Id)
 			if count > 3 {
 				s.sendMessage(emoji.Sprintf(":white_check_mark: No issues detected"))
 			}
-			s.store.zeroCount(monitor.Id)
+			s.store.ZeroCount(monitor.Id)
 		}
 	}
 }
@@ -347,7 +347,7 @@ type httpLogger struct {
 	log *log.Logger
 }
 
-func newLogger() *httpLogger {
+func NewLogger() *httpLogger {
 	return &httpLogger{
 		log: log.New(os.Stderr, "log - ", log.LstdFlags),
 	}
