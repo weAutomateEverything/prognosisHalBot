@@ -1,7 +1,7 @@
 package sourceMonitor
 
 import (
-	"fmt"
+	"github.com/pkg/errors"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"time"
@@ -18,67 +18,62 @@ type Store interface {
 	getMaxConnections() []nodeMax
 	setMaxConnections([]nodeMax) error
 
-	saveConnectionCount(name string, value int64) error
-	getConnectionCount(name string) (int64, error)
+	saveConnectionCount(name string, value int) error
+	getConnectionCount(name string) (float64, error)
 }
 
 type mongoStore struct {
 	db *mgo.Database
 }
 
-func (s mongoStore) getConnectionCount(name string) (avg int64, err error) {
-	c := s.db.C("connection_count")
-	key := fmt.Sprintf("%2d%2d-%v", time.Now().Hour(), time.Now().Minute(), name)
-	q := c.FindId(key)
-	count, err := q.Count()
+func (s mongoStore) getConnectionCount(name string) (avg float64, err error) {
+	c := s.db.C("connection_data")
+	d := time.Now()
+	q := []bson.M{
+		{
+			"$match": bson.M{
+				"connection": bson.M{"$eq": name},
+				"hour":       bson.M{"$eq": d.Hour()},
+				"minute":     bson.M{"$eq": d.Minute()},
+			},
+		},
+		{
+
+			"$group": bson.M{
+				"_id": nil,
+				"average_response": bson.M{
+					"$avg": "$connections",
+				},
+			},
+		},
+	}
+
+	var r []bson.M
+	err = c.Pipe(q).All(&r)
 	if err != nil {
 		return
 	}
 
-	if count == 0 {
-		err = fmt.Errorf("no data found for %v", key)
-		return
+	avg, ok := r[0]["average_response"].(float64)
+	if !ok {
+		err = errors.New("No data found")
 	}
-
-	d := connectionCount{}
-	err = q.One(&d)
-	if err != nil {
-		return
-	}
-
-	return d.Avg, nil
-
+	return
 }
 
-func (s mongoStore) saveConnectionCount(name string, value int64) error {
-	c := s.db.C("connection_count")
-	key := fmt.Sprintf("%2d%2d-%v", time.Now().Hour(), time.Now().Minute(), name)
-	q := c.FindId(key)
-	count, err := q.Count()
-	if err != nil {
-		return err
+func (s mongoStore) saveConnectionCount(name string, value int) error {
+	c := s.db.C("connection_data")
+	t := time.Now()
+	q := connectionCount{
+		Minute:      t.Minute(),
+		Hour:        t.Hour(),
+		Connection:  name,
+		Connections: value,
+		Day:         t.Day(),
+		DayOfWeek:   int(t.Weekday()),
+		Month:       int(t.Month()),
 	}
-
-	if count == 0 {
-		d := &connectionCount{
-			Time:  key,
-			Count: 1,
-			Avg:   value,
-		}
-
-		return c.Insert(d)
-	}
-
-	var d connectionCount
-	err = q.One(&d)
-	if err != nil {
-		return err
-	}
-
-	d.Avg = int64(((d.Avg * d.Count) + value) / (d.Count + 1))
-	d.Count++
-	return c.UpdateId(key, d)
-
+	return c.Insert(&q)
 }
 
 func (s mongoStore) getMaxConnections() (result []nodeMax) {
@@ -136,8 +131,11 @@ type nodeMax struct {
 }
 
 type connectionCount struct {
-	Time       string `json:"id" bson:"_id,omitempty"`
-	Connection string
-	Avg        int64
-	Count      int64
+	Connection  string `json:"connection"`
+	Hour        int    `json:"hour"`
+	Minute      int    `json:"minute"`
+	DayOfWeek   int    `json:"day_of_week"`
+	Day         int    `json:"day"`
+	Month       int    `json:"month"`
+	Connections int    `json:"connections"`
 }

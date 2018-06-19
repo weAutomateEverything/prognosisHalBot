@@ -74,18 +74,18 @@ func (s sourceSinkMonitor) checkMaxConnections(row []string) (failure bool, fail
 				log.Printf("unable to parse %v as a int for max value", v)
 				return
 			}
-			err = s.store.saveConnectionCount(max.Nodename, connections)
+			err = s.store.saveConnectionCount(max.Nodename, int(connections))
 			if err != nil {
 				log.Printf("There was an error saving the connection count %v", err)
 				err = nil
 			}
 			avg, err := s.store.getConnectionCount(max.Nodename)
 			if err != nil {
-				log.Printf("No conneciton found found")
+				log.Printf("No conneciton found found. %v", err.Error())
 				return
 			}
 
-			if connections/avg > 2 {
+			if float64(connections)/avg > 2 {
 				failuremsg = fmt.Sprintf("Normally at this time I excpect node %v to have %v connections. Currently there are %v connections. ", max.Nodename, connections, avg)
 				if connections > int64(max.Maxval) {
 					failuremsg = failuremsg + fmt.Sprintf("Since there are more than %v connections, I am invoking callout", max.Maxval)
