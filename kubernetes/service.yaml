@@ -1,0 +1,12 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: prognosis
+spec:
+  selector:
+    app: prognosis
+  ports:
+  - protocol: TCP
+    name: http
+    port: 80
+    targetPort: 8001

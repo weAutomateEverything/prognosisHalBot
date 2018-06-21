@@ -1,6 +1,17 @@
-POST http://localhost:8001/sourceMonitor/times
+POST localhost:8001/sourceMonitor/times
 
 < /Users/marcarndt/Documents/postilion.csv
 
+
+###
+
+POST prognosis-pos.legion.sbsa.local/sourceMonitor/max
+
+[
+    {
+        "Nodename": "TermApp.ISO",
+        "Maxval": 500
+    }
+]
 
 ###
