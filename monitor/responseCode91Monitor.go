@@ -30,7 +30,7 @@ func (s responseCode91) CheckResponse(input [][]string) (failure bool, failurems
 			}
 			if val > 5 {
 				log.Printf("Code %v found", row[4])
-				failuremsg = fmt.Sprintf("%v Code %v found", val, row[4])
+				failuremsg = fmt.Sprintf("%v instances of Code %v found", val, row[4])
 				return true, failuremsg, nil
 			}
 		}

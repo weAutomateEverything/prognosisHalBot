@@ -141,11 +141,13 @@ func (s *service) checkPrognosis() {
 				log.Println(err)
 				s.sendMessage(err.Error())
 			}
+			//Ignore the first 2 errors - this should make the alerts less noisy
 			if count > 3 {
 				s.sendMessage(emoji.Sprintf(":x: %v", failmsg))
 			}
 
-			if count == 10 {
+			//After 15 alerts, lets invoke callout
+			if count == 15 {
 				s.hal.Operations.InvokeCallout(&operations.InvokeCalloutParams{
 					Chatid:  getChatGroup(),
 					Context: getTimeout(),
@@ -250,6 +252,7 @@ httpDO:
 					if key == "Data" {
 						if len(t.([]interface{})) == 0 {
 							count++
+							//Sometimes, it takes prognosis a while to wake up... so the first 10 no data we can ignore
 							if count == 10 {
 								err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 0, so no real data", monitor.Dashboard, monitor.Id)}
 								return false, "", err

@@ -1,9 +1,10 @@
 package monitor
 
 import (
+	"fmt"
 	"log"
-	"strconv"
 	"sort"
+	"strconv"
 )
 
 type failureRateMonitor struct {
@@ -14,8 +15,7 @@ func (s failureRateMonitor) GetName() string {
 }
 
 func NewFailureRateMonitor() Monitor {
-	return &failureRateMonitor{
-	}
+	return &failureRateMonitor{}
 }
 
 func (s failureRateMonitor) CheckResponse(input [][]string) (failure bool, failuremsg string, err error) {
@@ -46,7 +46,7 @@ func (s failureRateMonitor) CheckResponse(input [][]string) (failure bool, failu
 
 	if row.approved == 0 {
 		if row.failed > 0 {
-			failuremsg = "No successful transactions found, only failed transactions"
+			failuremsg = fmt.Sprintf("No successful transactions found, only failed transactions (%v) ", row.failed)
 			log.Printf(failuremsg)
 			failure = true
 		}
@@ -54,7 +54,7 @@ func (s failureRateMonitor) CheckResponse(input [][]string) (failure bool, failu
 	}
 
 	if row.failed/row.approved > 20/100 {
-		failuremsg = "There is a high number of failed transactions when compared to successful transactions"
+		failuremsg = fmt.Sprintf("There is a high number of failed transactions (%v) when compared to successful transactions (%v)", row.failed, row.approved)
 		log.Printf(failuremsg)
 		failure = true
 		return

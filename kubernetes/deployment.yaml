@@ -15,7 +15,7 @@ spec:
         app: prognosis
     spec:
       containers:
-      - image: weautomateeverything/prognosismonitor:1.1.1
+      - image: weautomateeverything/prognosismonitor:1.29.1
         name: prognosis
         envFrom:
         - configMapRef:

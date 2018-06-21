@@ -1,0 +1,5 @@
+POST https://phonebook.legion.sbsa.local/cname
+
+{"project":"prognosis-pos","name":"prognosis-pos.legion.sbsa.local","canonical":"ingress.rdc.legion.sbsa.local"}
+
+###

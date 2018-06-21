@@ -1,0 +1,14 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: prognosis
+  annotations:
+    kubernetes.io/ingress.class: istio
+spec:
+  rules:
+  - host: prognosis-pos.legion.sbsa.local
+    http:
+      paths:
+      - backend:
+          serviceName: prognosis
+          servicePort: http
