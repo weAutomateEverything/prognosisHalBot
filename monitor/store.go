@@ -13,7 +13,7 @@ type store struct {
 type Store interface {
 	SaveRateData(d data)
 	SaveResponceCodeData([]string)
-	GetCount(id string) (int, error)
+	GetCount(id string) (int, time.Time, error)
 	IncreaseCount(id string) error
 	ZeroCount(id string) error
 }
@@ -24,11 +24,11 @@ func NewMongoStore(db *mgo.Database) Store {
 	}
 }
 
-func (s *store) GetCount(id string) (int, error) {
+func (s *store) GetCount(id string) (int, time.Time, error) {
 	c := s.db.C("failurecound")
 	var r failurecount
 	err := c.Find(bson.M{"apistring": id}).One(&r)
-	return r.Count, err
+	return r.Count, r.FirstError, err
 }
 
 func (s *store) IncreaseCount(id string) error {
@@ -43,6 +43,7 @@ func (s *store) IncreaseCount(id string) error {
 	if count == 0 {
 		r.Apistring = id
 		r.Count = 1
+		r.FirstError = time.Now()
 		return c.Insert(&r)
 	} else {
 		err := q.One(&r)
@@ -50,6 +51,9 @@ func (s *store) IncreaseCount(id string) error {
 			return err
 		}
 		r.Count++
+		if r.Count == 1 {
+			r.FirstError = time.Now()
+		}
 		return c.Update(bson.M{"apistring": id}, &r)
 	}
 }
@@ -109,7 +113,8 @@ type responceCodeRecord struct {
 }
 
 type failurecount struct {
-	ID        bson.ObjectId `bson:"_id,omitempty"`
-	Apistring string
-	Count     int
+	ID         bson.ObjectId `bson:"_id,omitempty"`
+	Apistring  string
+	Count      int
+	FirstError time.Time
 }

@@ -135,7 +135,8 @@ func (s *service) checkPrognosis() {
 				log.Println(err)
 				s.sendMessage(err.Error())
 			}
-			count, err := s.store.GetCount(monitor.Id)
+			count, t, err := s.store.GetCount(monitor.Id)
+			d := time.Since(t)
 
 			if err != nil {
 				log.Println(err)
@@ -143,7 +144,7 @@ func (s *service) checkPrognosis() {
 			}
 			//Ignore the first 2 errors - this should make the alerts less noisy
 			if count > 3 {
-				s.sendMessage(emoji.Sprintf(":x: %v", failmsg))
+				s.sendMessage(emoji.Sprintf(":x: %v. Error has been occurring for %v.", failmsg, d.String()))
 			}
 
 			//After 15 alerts, lets invoke callout
@@ -159,9 +160,10 @@ func (s *service) checkPrognosis() {
 			}
 			return
 		} else {
-			count, _ := s.store.GetCount(monitor.Id)
+			count, t, _ := s.store.GetCount(monitor.Id)
+			d := time.Since(t)
 			if count > 3 {
-				s.sendMessage(emoji.Sprintf(":white_check_mark: No issues detected"))
+				s.sendMessage(emoji.Sprintf(":white_check_mark: No issues detected. Errors occurred for %v", d.String()))
 			}
 			s.store.ZeroCount(monitor.Id)
 		}
@@ -415,6 +417,7 @@ func (NoResultsError) RuntimeError() {
 
 type environment struct {
 	Address  string
+	Group    int64
 	Monitors []monitors
 }
 
