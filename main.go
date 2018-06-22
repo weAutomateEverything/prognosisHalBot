@@ -17,6 +17,7 @@ import (
 
 	logger2 "github.com/go-openapi/runtime/logger"
 	"github.com/go-openapi/strfmt"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -42,6 +43,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/sourceMonitor/", sourceMonitor.MakeHandler(sourceStore, httpLogger))
 	http.Handle("/", accessControl(mux))
+	http.Handle("/api/metrics", promhttp.Handler())
 
 	logger.Log("All Systems GO!")
 	errs := make(chan error, 2)
