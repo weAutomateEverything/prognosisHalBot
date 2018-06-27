@@ -38,7 +38,7 @@ type service struct {
 
 	failing    bool
 	cookie     []*http.Cookie
-	config     []environment
+	config     environment
 	currentEnv int
 
 	techErrCount int
@@ -60,7 +60,7 @@ func NewService(hal *client.GO2HAL, store Store, monitors ...Monitor) Service {
 	if cfg == "" {
 		panic("CONFIG_URL environment variable is not set.")
 	}
-	var configs []environment
+	var configs environment
 	logger := NewLogger()
 
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
@@ -108,7 +108,7 @@ func (s *service) runChecks() {
 func (s *service) checkPrognosis() {
 	log.Println("Starting Prognosis")
 
-	for _, monitor := range s.config[s.currentEnv].Monitors {
+	for _, monitor := range s.config.Monitors {
 
 		failed, failmsg, err := s.checkMonitor(monitor)
 
@@ -118,13 +118,13 @@ func (s *service) checkPrognosis() {
 			if !ok {
 				s.techErrCount++
 				if s.techErrCount == 10 {
-					s.sendMessage("10 failures detected. Attempting login to find a new host")
+					s.sendMessage("10 failures detected. Attempting login to find a new host", monitor.Group)
 					continue
 				}
 			}
 			s.techErrCount = 0
 			//If the error is not a NoResultsError, it means we have another technical error
-			s.sendMessage(err.Error())
+			s.sendMessage(err.Error(), monitor.Group)
 			continue
 		}
 		s.techErrCount = 0
@@ -133,24 +133,24 @@ func (s *service) checkPrognosis() {
 			err := s.store.IncreaseCount(monitor.Id)
 			if err != nil {
 				log.Println(err)
-				s.sendMessage(err.Error())
+				s.sendMessage(err.Error(), monitor.Group)
 			}
 			count, t, err := s.store.GetCount(monitor.Id)
 			d := time.Since(t)
 
 			if err != nil {
 				log.Println(err)
-				s.sendMessage(err.Error())
+				s.sendMessage(err.Error(), monitor.Group)
 			}
 			//Ignore the first 2 errors - this should make the alerts less noisy
 			if count > 3 {
-				s.sendMessage(emoji.Sprintf(":x: %v. Error has been occurring for %v.", failmsg, d.String()))
+				s.sendMessage(emoji.Sprintf(":x: %v. Error has been occurring for %v.", failmsg, d.String()), monitor.Group)
 			}
 
 			//After 15 alerts, lets invoke callout
 			if count == 15 {
 				s.hal.Operations.InvokeCallout(&operations.InvokeCalloutParams{
-					Chatid:  getChatGroup(),
+					Chatid:  monitor.Group,
 					Context: getTimeout(),
 					Body: &models.SendCalloutRequest{
 						Message: aws.String(fmt.Sprintf("Prognosis Issue Detected. %v", failmsg)),
@@ -163,7 +163,7 @@ func (s *service) checkPrognosis() {
 			count, t, _ := s.store.GetCount(monitor.Id)
 			d := time.Since(t)
 			if count > 3 {
-				s.sendMessage(emoji.Sprintf(":white_check_mark: No issues detected. Errors occurred for %v", d.String()))
+				s.sendMessage(emoji.Sprintf(":white_check_mark: No issues detected. Errors occurred for %v", d.String()), monitor.Group)
 			}
 			s.store.ZeroCount(monitor.Id)
 		}
@@ -172,23 +172,23 @@ func (s *service) checkPrognosis() {
 
 func (s *service) getLoginCookie() error {
 	for true {
-		for i, x := range s.config {
+		for i, x := range s.config.Address {
 			log.Println("Logging in")
 			v := url.Values{}
 			v.Add("UserName", getUsername())
 			v.Add("Password", getPassword())
 			v.Add("Destination", "View Systems")
-			req, err := http.NewRequest("POST", fmt.Sprintf("%v/Prognosis/Login?returnUrl=/Prognosis/", x.Address), strings.NewReader(v.Encode()))
+			req, err := http.NewRequest("POST", fmt.Sprintf("%v/Prognosis/Login?returnUrl=/Prognosis/", x), strings.NewReader(v.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 			resp, err := http.DefaultClient.Do(req)
 
 			if err != nil {
-				s.sendMessage(err.Error())
+				s.sendMessage("prognosis error - "+err.Error(), getErrorGroup())
 				continue
 			}
 			if len(resp.Cookies()) == 0 {
-				s.sendMessage("No cookie found on response")
+				s.sendMessage("Prognosis error - No cookie found on response", getErrorGroup())
 				continue
 			}
 			s.currentEnv = i
@@ -196,7 +196,7 @@ func (s *service) getLoginCookie() error {
 			s.cookie = resp.Cookies()
 			return nil
 		}
-		s.sendMessage("Unable to successfully log into prognosis... will try again in 60 seconds")
+		s.sendMessage("Unable to successfully log into prognosis... will try again in 60 seconds", getErrorGroup())
 		time.Sleep(60 * time.Second)
 	}
 	return nil
@@ -205,7 +205,7 @@ func (s *service) getLoginCookie() error {
 
 func (s *service) checkMonitor(monitor monitors) (failing bool, message string, err error) {
 
-	guid, err := s.getGuidForMonitor(monitor.Dashboard, monitor.Id)
+	guid, err := s.getGuidForMonitor(monitor)
 	if err != nil {
 		log.Println(err)
 		return
@@ -289,8 +289,8 @@ httpDO:
 	return
 }
 
-func (s *service) getGuidForMonitor(dashboard, id string) (guid string, err error) {
-	url := fmt.Sprintf("%v/Prognosis/Dashboard/Content/%v", s.getEndpoint(), dashboard)
+func (s *service) getGuidForMonitor(monitor monitors) (guid string, err error) {
+	url := fmt.Sprintf("%v/Prognosis/Dashboard/Content/%v", s.getEndpoint(), monitor.Dashboard)
 	req, err := http.NewRequest("GET", url, strings.NewReader(""))
 	for _, c := range s.cookie {
 		req.AddCookie(c)
@@ -303,7 +303,7 @@ func (s *service) getGuidForMonitor(dashboard, id string) (guid string, err erro
 		return
 	}
 
-	nodes := htmlquery.Find(doc, fmt.Sprintf("//div[@id='%v']", id))
+	nodes := htmlquery.Find(doc, fmt.Sprintf("//div[@id='%v']", monitor.Id))
 	for _, node := range nodes {
 		child := node.FirstChild
 		for child.Data != "script" {
@@ -326,18 +326,18 @@ func (s *service) getGuidForMonitor(dashboard, id string) (guid string, err erro
 			}
 		}
 	}
-	msg := fmt.Sprintf("no guid found for %v on dashboard %v. Restarting Bot", id, dashboard)
-	s.sendMessage(msg)
+	msg := fmt.Sprintf("no guid found for %v on dashboard %v. Restarting Bot", monitor.Id, monitor.Dashboard)
+	s.sendMessage(msg, monitor.Group)
 	panic(msg)
 	return
 
 }
 
-func (s *service) sendMessage(message string) {
+func (s *service) sendMessage(message string, group int64) {
 	message = strings.Replace(message, "_", " ", 0)
 	resp, err := s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
 		Context: getTimeout(),
-		Chatid:  getChatGroup(),
+		Chatid:  group,
 		Message: aws.String(message),
 	})
 	if err != nil {
@@ -382,7 +382,7 @@ func (l *httpLogger) LogResponse(req *http.Request, res *http.Response, err erro
 }
 
 func (s service) getEndpoint() string {
-	return s.config[s.currentEnv].Address
+	return s.config.Address[s.currentEnv]
 }
 
 func getUsername() string {
@@ -394,13 +394,13 @@ func getPassword() string {
 	return os.Getenv("PROGNOSIS_PASSWORD")
 }
 
-func getChatGroup() int64 {
-	s := os.Getenv("CHAT_GROUP")
-	u, err := strconv.ParseInt(s, 10, 64)
+func getErrorGroup() int64 {
+	int, err := strconv.ParseInt(os.Getenv("ERROR_GROUP"), 10, 64)
 	if err != nil {
-		panic(fmt.Sprintf("CHAT_GROUP has not been set.. Error %v", err.Error()))
+		log.Println(err)
+		return 0
 	}
-	return u
+	return int
 }
 
 type NoResultsError struct {
@@ -416,13 +416,13 @@ func (NoResultsError) RuntimeError() {
 }
 
 type environment struct {
-	Address  string
-	Group    int64
+	Address  []string
 	Monitors []monitors
 }
 
 type monitors struct {
 	Type, Dashboard, Id, Name, ObjectType string
+	Group                                 int64
 }
 
 func getTimeout() context.Context {
