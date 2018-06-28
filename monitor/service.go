@@ -334,7 +334,7 @@ func (s *service) getGuidForMonitor(monitor monitors) (guid string, err error) {
 }
 
 func (s *service) sendMessage(message string, group int64) {
-	message = strings.Replace(message, "_", " ", 0)
+	message = strings.Replace(message, "_", " ", -1)
 	resp, err := s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
 		Context: getTimeout(),
 		Chatid:  group,
