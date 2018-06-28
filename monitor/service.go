@@ -13,6 +13,7 @@ import (
 	"github.com/weAutomateEverything/prognosisHalBot/client/operations"
 	"github.com/weAutomateEverything/prognosisHalBot/models"
 	"golang.org/x/net/context"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -235,7 +236,16 @@ httpDO:
 		}
 		var data map[string]interface{}
 
-		err = json.NewDecoder(resp.Body).Decode(&data)
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			err = fmt.Errorf("error reading body for dashboard %v, id %v, error %v", monitor.Dashboard, monitor.Id, err.Error())
+			return false, "", err
+		}
+
+		log.Println(string(body))
+
+		err = json.Unmarshal(body, &data)
+
 		resp.Body.Close()
 		if err != nil {
 			return false, "", err
