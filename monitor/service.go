@@ -119,7 +119,7 @@ func (s *service) checkPrognosis() {
 			if !ok {
 				s.techErrCount++
 				if s.techErrCount == 10 {
-					s.sendMessage("10 failures detected. Attempting login to find a new host", monitor.Group)
+					s.sendMessage("10 failures detected. Attempting login to find a new host", getErrorGroup())
 					continue
 				}
 			}
@@ -248,7 +248,7 @@ httpDO:
 		}
 
 		if data == nil {
-			err = fmt.Errorf("data nil for dashboard %v, id %v", monitor.Dashboard, monitor.Id)
+			err = fmt.Errorf("data nil for dashboard %v, id %v", monitor.Dashboard, getErrorGroup())
 			return false, "", err
 		}
 
@@ -262,7 +262,7 @@ httpDO:
 							count++
 							//Sometimes, it takes prognosis a while to wake up... so the first 10 no data we can ignore
 							if count == 10 {
-								err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 0, so no real data", monitor.Dashboard, monitor.Id)}
+								err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 0, so no real data", monitor.Dashboard, getErrorGroup())}
 								return false, "", err
 							}
 							time.Sleep(2 * time.Second)
@@ -270,7 +270,7 @@ httpDO:
 						}
 						d := t.([]interface{})[0].([]interface{})
 						if len(d) == 2 {
-							err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 2, so no real data", monitor.Dashboard, monitor.Id)}
+							err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 2, so no real data", monitor.Dashboard, getErrorGroup())}
 							return false, "", err
 						}
 						var input [][]string
@@ -291,7 +291,7 @@ httpDO:
 		}
 	}
 
-	err = NoResultsError{fmt.Sprintf("no usable data found for for dashboard %v, id %v", monitor.Dashboard, monitor.Id)}
+	err = NoResultsError{fmt.Sprintf("no usable data found for for dashboard %v, id %v", monitor.Dashboard, getErrorGroup())}
 	return
 }
 
@@ -332,7 +332,7 @@ func (s *service) getGuidForMonitor(monitor monitors) (guid string, err error) {
 			}
 		}
 	}
-	msg := fmt.Sprintf("no guid found for %v on dashboard %v. Restarting Bot", monitor.Id, monitor.Dashboard)
+	msg := fmt.Sprintf("no guid found for %v on dashboard %v. Restarting Bot", monitor.Id, getErrorGroup())
 	s.sendMessage(msg, monitor.Group)
 	panic(msg)
 	return
