@@ -219,10 +219,6 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 		guid,
 	)
 	req, err := http.NewRequest("GET", url, strings.NewReader(""))
-	q := req.URL.Query()
-	q.Add("oTS", monitor.ObjectType)
-	req.URL.RawQuery = q.Encode()
-
 	for _, c := range s.cookie {
 		req.AddCookie(c)
 	}
