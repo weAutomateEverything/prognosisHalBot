@@ -102,7 +102,6 @@ func (s *service) runChecks() {
 
 	for true {
 		s.checkPrognosis()
-		time.Sleep(10 * time.Second)
 	}
 }
 
@@ -118,13 +117,14 @@ func (s *service) checkPrognosis() {
 		if err != nil {
 			s.techErrCount++
 			log.Printf("Tech Error count is %v", s.techErrCount)
+			if s.techErrCount == 10 {
+				s.sendMessage("10 failures detected. Attempting login to find a new host", getErrorGroup())
+				panic("10 consecutive failures")
+			}
+			continue
 		} else {
 			log.Println("setting tech error count to 0")
 			s.techErrCount = 0
-		}
-		if s.techErrCount == 10 {
-			s.sendMessage("10 failures detected. Attempting login to find a new host", getErrorGroup())
-			panic("10 consecutive failures")
 		}
 
 		if failed {
@@ -212,9 +212,6 @@ func (s *service) getLoginCookie() error {
 func (s *service) checkMonitor(monitor monitors) (failing bool, message string, err error) {
 	count := 0
 	for count < 10 {
-		if count > 0 {
-			time.Sleep(2 * time.Second)
-		}
 		count++
 		guid, err := s.getGuidForMonitor(monitor)
 		if err != nil {
@@ -284,7 +281,7 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 
 		if len(dataArray) == 0 {
 			//Sometimes, it takes prognosis a while to wake up... so the first 10 no data we can ignore
-			fmt.Printf("Length of data is 0 for dashboard %v, graph %v", monitor.Dashboard, monitor.Id)
+			log.Printf("Length of data is 0 for dashboard %v, graph %v", monitor.Dashboard, monitor.Id)
 			continue
 		}
 		dataElements := dataArray[0].([]interface{})
