@@ -53,6 +53,9 @@ func (s sourceSinkMonitor) checkConnected(row []string) (failure bool, failurems
 
 	node := strings.ToUpper(row[0])
 	log.Printf("%v detected as down", node)
+	for i := 0; i < 10; i++ {
+		node = strings.Replace(node, strconv.FormatInt(int64(i), 10), "", -1)
+	}
 
 	for _, times := range s.store.GetNodeTimes() {
 		if strings.Index(times.Nodename, node) != -1 {
