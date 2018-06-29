@@ -62,6 +62,8 @@ func (s sourceSinkMonitor) checkConnected(row []string) (failure bool, failurems
 			if s.checkSend(times) {
 				failure = true
 				failuremsg = fmt.Sprintf("Node %v has been detected as being unavalable. ", node)
+				log.Println(failuremsg)
+				return
 			}
 		}
 	}
