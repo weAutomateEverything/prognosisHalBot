@@ -347,7 +347,6 @@ func (s *service) getGuidForMonitor(monitor monitors) (guid string, err error) {
 		}
 	}
 	msg := fmt.Sprintf("no guid found for %v on dashboard %v. Restarting Bot", monitor.Id, getErrorGroup())
-	s.sendMessage(msg, monitor.Group)
 	panic(msg)
 	return
 
