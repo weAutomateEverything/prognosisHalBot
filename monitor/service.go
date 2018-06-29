@@ -125,7 +125,7 @@ func (s *service) checkPrognosis() {
 		}
 
 		if failed {
-			s.handleFailed(monitor,failmsg)
+			s.handleFailed(monitor, failmsg)
 		} else {
 			count, t, _ := s.store.GetCount(monitor.Id)
 			d := time.Since(t)
