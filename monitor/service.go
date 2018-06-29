@@ -140,7 +140,7 @@ func (s *service) checkPrognosis() {
 	}
 }
 
-func (s *service) handleFailed(monitor monitors, failmsg string) {
+func (s *service) handleFailed(monitor *monitors, failmsg string) {
 	log.Printf("handling failure %v from %v\n", failmsg, monitor.Name)
 	err := s.store.IncreaseCount(monitor.Id)
 	if err != nil {
@@ -209,9 +209,12 @@ func (s *service) getLoginCookie() error {
 
 }
 
-func (s *service) checkMonitor(monitor monitors) (failing bool, message string, err error) {
+func (s *service) checkMonitor(monitor *monitors) (failing bool, message string, err error) {
 	count := 0
 	for count < 10 {
+		if count > 0 {
+			time.Sleep(1 * time.Second)
+		}
 		count++
 		guid, err := s.getGuidForMonitor(monitor)
 		if err != nil {
@@ -296,6 +299,7 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 			}
 			input = append(input, val)
 		}
+		monitor.lastSuccess = time.Now().UnixNano()
 		monitor := s.monitors[monitor.Type]
 		log.Printf(monitor.GetName())
 		return monitor.CheckResponse(input)
@@ -307,7 +311,7 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 
 }
 
-func (s *service) getGuidForMonitor(monitor monitors) (guid string, err error) {
+func (s *service) getGuidForMonitor(monitor *monitors) (guid string, err error) {
 	url := fmt.Sprintf("%v/Prognosis/Dashboard/Content/%v", s.getEndpoint(), monitor.Dashboard)
 	req, err := http.NewRequest("GET", url, strings.NewReader(""))
 	for _, c := range s.cookie {
@@ -435,12 +439,13 @@ func (NoResultsError) RuntimeError() {
 
 type environment struct {
 	Address  []string
-	Monitors []monitors
+	Monitors []*monitors
 }
 
 type monitors struct {
 	Type, Dashboard, Id, Name, ObjectType string
 	Group                                 int64
+	lastSuccess                           int64
 }
 
 func getTimeout() context.Context {
