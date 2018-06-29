@@ -115,51 +115,17 @@ func (s *service) checkPrognosis() {
 
 		//If there is an error fetching data, lets handle it, but not use the results to determine the system health
 		if err != nil {
-			_, ok := err.(NoResultsError)
-			if !ok {
-				s.techErrCount++
-				if s.techErrCount == 10 {
-					s.sendMessage("10 failures detected. Attempting login to find a new host", getErrorGroup())
-					continue
-				}
-			}
+			s.techErrCount++
+		} else {
 			s.techErrCount = 0
-			//If the error is not a NoResultsError, it means we have another technical error
-			s.sendMessage(err.Error(), monitor.Group)
-			continue
 		}
-		s.techErrCount = 0
+		if s.techErrCount == 10 {
+			s.sendMessage("10 failures detected. Attempting login to find a new host", getErrorGroup())
+			panic("10 consecutive failures")
+		}
 
 		if failed {
-			err := s.store.IncreaseCount(monitor.Id)
-			if err != nil {
-				log.Println(err)
-				s.sendMessage(err.Error(), monitor.Group)
-			}
-			count, t, err := s.store.GetCount(monitor.Id)
-			d := time.Since(t)
-
-			if err != nil {
-				log.Println(err)
-				s.sendMessage(err.Error(), monitor.Group)
-			}
-			//Ignore the first 2 errors - this should make the alerts less noisy
-			if count > 3 {
-				s.sendMessage(emoji.Sprintf(":x: %v. Error has been occurring for %v.", failmsg, d.String()), monitor.Group)
-			}
-
-			//After 15 alerts, lets invoke callout
-			if count == 15 {
-				s.hal.Operations.InvokeCallout(&operations.InvokeCalloutParams{
-					Chatid:  monitor.Group,
-					Context: getTimeout(),
-					Body: &models.SendCalloutRequest{
-						Message: aws.String(fmt.Sprintf("Prognosis Issue Detected. %v", failmsg)),
-						Title:   aws.String(failmsg),
-					},
-				})
-			}
-			return
+			s.handleFailed(monitor,failmsg)
 		} else {
 			count, t, _ := s.store.GetCount(monitor.Id)
 			d := time.Since(t)
@@ -169,6 +135,38 @@ func (s *service) checkPrognosis() {
 			s.store.ZeroCount(monitor.Id)
 		}
 	}
+}
+
+func (s *service) handleFailed(monitor monitors, failmsg string) {
+	err := s.store.IncreaseCount(monitor.Id)
+	if err != nil {
+		log.Println(err)
+		s.sendMessage(err.Error(), monitor.Group)
+	}
+	count, t, err := s.store.GetCount(monitor.Id)
+	d := time.Since(t)
+
+	if err != nil {
+		log.Println(err)
+		s.sendMessage(err.Error(), monitor.Group)
+	}
+	//Ignore the first 2 errors - this should make the alerts less noisy
+	if count > 3 {
+		s.sendMessage(emoji.Sprintf(":x: %v. Error has been occurring for %v.", failmsg, d.String()), monitor.Group)
+	}
+
+	//After 15 alerts, lets invoke callout
+	if count == 15 {
+		s.hal.Operations.InvokeCallout(&operations.InvokeCalloutParams{
+			Chatid:  monitor.Group,
+			Context: getTimeout(),
+			Body: &models.SendCalloutRequest{
+				Message: aws.String(fmt.Sprintf("Prognosis Issue Detected. %v", failmsg)),
+				Title:   aws.String(failmsg),
+			},
+		})
+	}
+	return
 }
 
 func (s *service) getLoginCookie() error {
@@ -205,37 +203,40 @@ func (s *service) getLoginCookie() error {
 }
 
 func (s *service) checkMonitor(monitor monitors) (failing bool, message string, err error) {
-
-	guid, err := s.getGuidForMonitor(monitor)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	if monitor.ObjectType == "" {
-		monitor.ObjectType = "#"
-	}
-	url := fmt.Sprintf("%v/Prognosis/DashboardView/%v",
-		s.getEndpoint(),
-		guid,
-	)
-	req, err := http.NewRequest("GET", url, strings.NewReader(""))
-	for _, c := range s.cookie {
-		req.AddCookie(c)
-	}
-
 	count := 0
-httpDO:
-	for true {
+	for count < 10 {
+		if count > 0 {
+			time.Sleep(2 * time.Second)
+		}
+		count++
+		guid, err := s.getGuidForMonitor(monitor)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		if monitor.ObjectType == "" {
+			monitor.ObjectType = "#"
+		}
+		url := fmt.Sprintf("%v/Prognosis/DashboardView/%v",
+			s.getEndpoint(),
+			guid,
+		)
+		req, err := http.NewRequest("GET", url, strings.NewReader(""))
+		for _, c := range s.cookie {
+			req.AddCookie(c)
+		}
+
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			return false, "", err
+			log.Println(err)
+			continue
 		}
 		var data map[string]interface{}
 
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			err = fmt.Errorf("error reading body for dashboard %v, id %v, error %v", monitor.Dashboard, monitor.Id, err.Error())
-			return false, "", err
+			log.Println(err)
+			continue
 		}
 
 		log.Println(string(body))
@@ -244,55 +245,58 @@ httpDO:
 
 		resp.Body.Close()
 		if err != nil {
-			return false, "", err
+			log.Println(err)
+			continue
 		}
 
 		if data == nil {
-			err = fmt.Errorf("data nil for dashboard %v, id %v", monitor.Dashboard, getErrorGroup())
-			return false, "", err
+			err = fmt.Errorf("data nil for dashboard %v, id %v", monitor.Dashboard, guid)
+			log.Println(err)
+			continue
 		}
 
 		//First the root element - thios should include a item called Data
-		for _, value := range data {
-			v, ok := value.(map[string]interface{})
-			if ok {
-				for key, t := range v {
-					if key == "Data" {
-						if len(t.([]interface{})) == 0 {
-							count++
-							//Sometimes, it takes prognosis a while to wake up... so the first 10 no data we can ignore
-							if count == 10 {
-								err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 0, so no real data", monitor.Dashboard, getErrorGroup())}
-								return false, "", err
-							}
-							time.Sleep(2 * time.Second)
-							continue httpDO
-						}
-						d := t.([]interface{})[0].([]interface{})
-						if len(d) == 2 {
-							err = NoResultsError{Messsage: fmt.Sprintf("Data Length of dashboard %v, graph %v was 2, so no real data", monitor.Dashboard, getErrorGroup())}
-							return false, "", err
-						}
-						var input [][]string
-						for _, row := range d[2:] {
-							var val []string
-							for _, m := range row.([]interface{}) {
-								val = append(val, m.(string))
-							}
-							input = append(input, val)
-						}
-						monitor := s.monitors[monitor.Type]
-						log.Printf(monitor.GetName())
-						return monitor.CheckResponse(input)
-
-					}
-				}
-			}
+		root, ok := data[monitor.Id]
+		if !ok {
+			log.Println("No valid root element found")
+			continue
 		}
-	}
+		rootMap := root.(map[string]interface{})
 
-	err = NoResultsError{fmt.Sprintf("no usable data found for for dashboard %v, id %v", monitor.Dashboard, getErrorGroup())}
-	return
+		dataObject, ok := rootMap["Data"]
+		if !ok {
+			log.Println("No Data object found")
+			continue
+		}
+
+		dataArray := (dataObject).([]interface{})
+
+		if len(dataArray) == 0 {
+			//Sometimes, it takes prognosis a while to wake up... so the first 10 no data we can ignore
+			fmt.Printf("Length of data is 0 for dashboard %v, graph %v", monitor.Dashboard, monitor.Id)
+			continue
+		}
+		dataElements := dataArray[0].([]interface{})
+		if len(dataElements) == 2 {
+			continue
+		}
+		var input [][]string
+		for _, row := range dataElements[2:] {
+			var val []string
+			for _, m := range row.([]interface{}) {
+				val = append(val, m.(string))
+			}
+			input = append(input, val)
+		}
+		monitor := s.monitors[monitor.Type]
+		log.Printf(monitor.GetName())
+		return monitor.CheckResponse(input)
+
+	}
+	s.sendMessage(fmt.Sprintf("No data found after 10 attempts for dashboard %v", monitor.Id), getErrorGroup())
+	err = NoResultsError{Messsage: fmt.Sprintf("no data found for %v, graph %v", monitor.Dashboard, getErrorGroup())}
+	return false, "", err
+
 }
 
 func (s *service) getGuidForMonitor(monitor monitors) (guid string, err error) {
