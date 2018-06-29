@@ -256,7 +256,11 @@ func (s *service) checkMonitor(monitor monitors) (failing bool, message string, 
 		}
 
 		//First the root element - thios should include a item called Data
-		root, ok := data[monitor.Id]
+		key := monitor.Id
+		if strings.HasPrefix(key, "id_") {
+			key = strings.Replace(key, "id_", "", 1)
+		}
+		root, ok := data[key]
 		if !ok {
 			log.Println("No valid root element found")
 			continue
