@@ -112,11 +112,12 @@ func (s *service) checkPrognosis() {
 	for _, monitor := range s.config.Monitors {
 
 		failed, failmsg, err := s.checkMonitor(monitor)
+		log.Printf("Output of check %v is, failed %v, failmsg: %v, error: %v", monitor.Name, failed, failmsg, err)
 
 		//If there is an error fetching data, lets handle it, but not use the results to determine the system health
 		if err != nil {
 			s.techErrCount++
-			fmt.Printf("Tech Error count is %v", s.techErrCount)
+			log.Printf("Tech Error count is %v", s.techErrCount)
 		} else {
 			log.Println("setting tech error count to 0")
 			s.techErrCount = 0
@@ -140,15 +141,15 @@ func (s *service) checkPrognosis() {
 }
 
 func (s *service) handleFailed(monitor monitors, failmsg string) {
-	fmt.Printf("handling failure %v from %v", failmsg, monitor.Name)
+	log.Printf("handling failure %v from %v\n", failmsg, monitor.Name)
 	err := s.store.IncreaseCount(monitor.Id)
 	if err != nil {
 		log.Println(err)
-		s.sendMessage(err.Error(), monitor.Group)
+		s.sendMessage(err.Error(), getErrorGroup())
 	}
 	count, t, err := s.store.GetCount(monitor.Id)
 	d := time.Since(t)
-	fmt.Printf("errror count is %v for %v", count, monitor.Name)
+	log.Printf("errror count is %v for %v\n", count, monitor.Name)
 
 	if err != nil {
 		log.Println(err)
@@ -162,7 +163,7 @@ func (s *service) handleFailed(monitor monitors, failmsg string) {
 
 	//After 15 alerts, lets invoke callout
 	if count == 15 {
-		log.Printf("Invoking callout for %v", monitor.Name)
+		log.Printf("Invoking callout for %v\n", monitor.Name)
 		s.hal.Operations.InvokeCallout(&operations.InvokeCalloutParams{
 			Chatid:  monitor.Group,
 			Context: getTimeout(),
