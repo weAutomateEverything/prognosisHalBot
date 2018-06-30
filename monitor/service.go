@@ -130,12 +130,14 @@ func (s *service) checkPrognosis() {
 		if failed {
 			s.handleFailed(monitor, failmsg)
 		} else {
-			count, t, _ := s.store.GetCount(monitor.Id)
+			_, t, _ := s.store.GetCount(monitor.Id)
 			d := time.Since(t)
-			if count > 3 {
+			if monitor.messageSent {
 				s.sendMessage(emoji.Sprintf(":white_check_mark: No issues detected. Errors occurred for %v", d.String()), monitor.Group)
 			}
 			s.store.ZeroCount(monitor.Id)
+			monitor.calloutInvoked = false
+			monitor.messageSent = false
 		}
 	}
 }
@@ -156,22 +158,26 @@ func (s *service) handleFailed(monitor *monitors, failmsg string) {
 		s.sendMessage(err.Error(), monitor.Group)
 	}
 	//Ignore the first 2 errors - this should make the alerts less noisy
-	if count > 3 {
+	if d > 30*time.Second {
 		log.Printf("Sendign warning for %v", monitor.Name)
 		s.sendMessage(emoji.Sprintf(":x: %v. Error has been occurring for %v.", failmsg, d.String()), monitor.Group)
+		monitor.messageSent = true
 	}
 
 	//After 15 alerts, lets invoke callout
-	if count == 15 {
-		log.Printf("Invoking callout for %v\n", monitor.Name)
-		s.hal.Operations.InvokeCallout(&operations.InvokeCalloutParams{
-			Chatid:  monitor.Group,
-			Context: getTimeout(),
-			Body: &models.SendCalloutRequest{
-				Message: aws.String(fmt.Sprintf("Prognosis Issue Detected. %v", failmsg)),
-				Title:   aws.String(failmsg),
-			},
-		})
+	if d > 3*time.Minute {
+		if !monitor.calloutInvoked {
+			log.Printf("Invoking callout for %v\n", monitor.Name)
+			s.hal.Operations.InvokeCallout(&operations.InvokeCalloutParams{
+				Chatid:  monitor.Group,
+				Context: getTimeout(),
+				Body: &models.SendCalloutRequest{
+					Message: aws.String(fmt.Sprintf("Prognosis Issue Detected. %v", failmsg)),
+					Title:   aws.String(failmsg),
+				},
+			})
+			monitor.calloutInvoked = true
+		}
 	}
 	return
 }
@@ -446,6 +452,8 @@ type monitors struct {
 	Type, Dashboard, Id, Name, ObjectType string
 	Group                                 int64
 	lastSuccess                           int64
+	calloutInvoked                        bool
+	messageSent                           bool
 }
 
 func getTimeout() context.Context {
