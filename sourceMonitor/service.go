@@ -7,6 +7,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"net/http"
+	"os"
+	"encoding/json"
+	"bytes"
+	"io/ioutil"
+	"crypto/x509"
+	"crypto/tls"
+	"github.com/ernesto-jimenez/httplogger"
 )
 
 type sourceSinkMonitor struct {
@@ -80,6 +88,7 @@ func (s sourceSinkMonitor) checkMaxConnections(row []string) (failure bool, fail
 				return
 			}
 			err = s.store.saveConnectionCount(max.Nodename, int(connections))
+			s.sendElastisearch(max.Nodename,int(connections))
 			if err != nil {
 				log.Printf("There was an error saving the connection count %v", err)
 				err = nil
@@ -93,7 +102,7 @@ func (s sourceSinkMonitor) checkMaxConnections(row []string) (failure bool, fail
 			if float64(connections)/avg > 2 {
 				failuremsg = fmt.Sprintf("Normally at this time I excpect node %v to have %v connections. Currently there are %v connections. ", max.Nodename, avg, connections)
 				if connections > int64(max.Maxval) {
-					failuremsg = failuremsg + fmt.Sprintf("Since there are more than %v connections, I am invoking callout", max.Maxval)
+					failuremsg = failuremsg + fmt.Sprintf("Since there are more than %v connections, I am marking this as an error", max.Maxval)
 					failure = true
 				}
 				log.Println(failuremsg)
@@ -120,6 +129,56 @@ func (s sourceSinkMonitor) checkSend(node nodeHours) bool {
 
 }
 
+func (s sourceSinkMonitor) sendElastisearch(nodename string , count int ){
+	r := elastiRequest{
+		Connections: count,
+		Node: nodename,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+	doc, err := json.Marshal(r)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	log.Println(string(doc))
+	req, err := http.NewRequest("POST", os.Getenv("ELASTIC"), bytes.NewReader(doc))
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	req.Header.Set("Content-Type","application/json")
+	req.SetBasicAuth(os.Getenv("ELASTIC_USER"),os.Getenv("ELASTIC_PASSWORD"))
+
+	b, err := ioutil.ReadFile("/cacert.pem")
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	cp := x509.NewCertPool()
+	if !cp.AppendCertsFromPEM(b) {
+		log.Println("failed to append certificates")
+		return
+	}
+	logger := monitor.NewLogger()
+
+
+	config := &tls.Config{RootCAs: cp}
+	transport := http.DefaultTransport
+	transport.(*http.Transport).TLSClientConfig = config
+
+	client := http.DefaultClient
+	client.Transport = httplogger.NewLoggedTransport(http.DefaultTransport, logger)
+
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	resp.Body.Close()
+}
+
 func (s sourceSinkMonitor) checkTime(hours, impact string) bool {
 	if impact != "Critical" {
 		log.Printf("%v not critical", impact)
@@ -139,4 +198,10 @@ func (s sourceSinkMonitor) checkTime(hours, impact string) bool {
 	} else {
 		return now >= startHour || now < endHour
 	}
+}
+
+type elastiRequest struct {
+	Timestamp string `json:"@timestamp"`
+	Node string `json:"node"`
+	Connections int `json:"connections"`
 }
