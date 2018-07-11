@@ -1,20 +1,20 @@
 package sourceMonitor
 
 import (
+	"bytes"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
 	"fmt"
+	"github.com/ernesto-jimenez/httplogger"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
+	"io/ioutil"
 	"log"
+	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
-	"net/http"
-	"os"
-	"encoding/json"
-	"bytes"
-	"io/ioutil"
-	"crypto/x509"
-	"crypto/tls"
-	"github.com/ernesto-jimenez/httplogger"
 )
 
 type sourceSinkMonitor struct {
@@ -72,9 +72,15 @@ func (s sourceSinkMonitor) checkConnected(row []string) (failure bool, failurems
 				failuremsg = fmt.Sprintf("Node %v has been detected as being unavalable. ", node)
 				log.Println(failuremsg)
 				return
+			} else {
+				log.Printf("Node %v found to be outside of critical window", node)
+				return
 			}
 		}
 	}
+	failure = true
+	failuremsg = fmt.Sprintf("Node %v has been detected as being down, however I cannot find  a record in the database that lets me know if this is critical or not, so I am treating it as critical", node)
+	log.Println(failuremsg)
 	return
 }
 
@@ -88,7 +94,7 @@ func (s sourceSinkMonitor) checkMaxConnections(row []string) (failure bool, fail
 				return
 			}
 			err = s.store.saveConnectionCount(max.Nodename, int(connections))
-			s.sendElastisearch(max.Nodename,int(connections))
+			s.sendElastisearch(max.Nodename, int(connections))
 			if err != nil {
 				log.Printf("There was an error saving the connection count %v", err)
 				err = nil
@@ -129,11 +135,11 @@ func (s sourceSinkMonitor) checkSend(node nodeHours) bool {
 
 }
 
-func (s sourceSinkMonitor) sendElastisearch(nodename string , count int ){
+func (s sourceSinkMonitor) sendElastisearch(nodename string, count int) {
 	r := elastiRequest{
 		Connections: count,
-		Node: nodename,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Node:        nodename,
+		Timestamp:   time.Now().UTC().Format(time.RFC3339),
 	}
 	doc, err := json.Marshal(r)
 	if err != nil {
@@ -146,8 +152,8 @@ func (s sourceSinkMonitor) sendElastisearch(nodename string , count int ){
 		log.Println(err)
 		return
 	}
-	req.Header.Set("Content-Type","application/json")
-	req.SetBasicAuth(os.Getenv("ELASTIC_USER"),os.Getenv("ELASTIC_PASSWORD"))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth(os.Getenv("ELASTIC_USER"), os.Getenv("ELASTIC_PASSWORD"))
 
 	b, err := ioutil.ReadFile("/cacert.pem")
 	if err != nil {
@@ -161,14 +167,12 @@ func (s sourceSinkMonitor) sendElastisearch(nodename string , count int ){
 	}
 	logger := monitor.NewLogger()
 
-
 	config := &tls.Config{RootCAs: cp}
 	transport := http.DefaultTransport
 	transport.(*http.Transport).TLSClientConfig = config
 
 	client := http.DefaultClient
 	client.Transport = httplogger.NewLoggedTransport(http.DefaultTransport, logger)
-
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -201,7 +205,7 @@ func (s sourceSinkMonitor) checkTime(hours, impact string) bool {
 }
 
 type elastiRequest struct {
-	Timestamp string `json:"@timestamp"`
-	Node string `json:"node"`
-	Connections int `json:"connections"`
+	Timestamp   string `json:"@timestamp"`
+	Node        string `json:"node"`
+	Connections int    `json:"connections"`
 }
