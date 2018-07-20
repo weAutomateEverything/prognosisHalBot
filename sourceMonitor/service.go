@@ -136,6 +136,7 @@ func (s sourceSinkMonitor) checkSend(node nodeHours) bool {
 }
 
 func (s sourceSinkMonitor) sendElastisearch(nodename string, count int) {
+
 	r := elastiRequest{
 		Connections: count,
 		Node:        nodename,
