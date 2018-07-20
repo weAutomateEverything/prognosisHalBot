@@ -18,6 +18,7 @@ import (
 	logger2 "github.com/go-openapi/runtime/logger"
 	"github.com/go-openapi/strfmt"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/weAutomateEverything/prognosisHalBot/sinkBin"
 )
 
 func main() {
@@ -36,7 +37,8 @@ func main() {
 
 	c := client.New(transport, strfmt.Default)
 
-	monitor.NewService(c, monitorStore, monitor.NewResponseCode91Monitor(), monitor.NewFailureRateMonitor(), sourceMonitor.NewSourceSinkMonitor(sourceStore))
+	monitor.NewService(c, monitorStore, monitor.NewResponseCode91Monitor(), monitor.NewFailureRateMonitor(),
+		sourceMonitor.NewSourceSinkMonitor(sourceStore), sinkBin.NewSinkBinMonitor())
 
 	httpLogger := log.With(logger, "component", "http")
 
