@@ -1,18 +1,18 @@
 package monitor
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"github.com/antchfx/htmlquery"
-	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-xray-sdk-go/xray"
 	"github.com/ernesto-jimenez/httplogger"
 	"github.com/kyokomi/emoji"
-	"github.com/weAutomateEverything/prognosisHalBot/client"
-	"github.com/weAutomateEverything/prognosisHalBot/client/alert"
-	"github.com/weAutomateEverything/prognosisHalBot/client/operations"
-	"github.com/weAutomateEverything/prognosisHalBot/models"
+	"github.com/pkg/errors"
+	"github.com/weAutomateEverything/go2hal/callout"
 	"golang.org/x/net/context"
+	"golang.org/x/net/context/ctxhttp"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -33,7 +33,6 @@ type Service interface {
 
 type service struct {
 	store Store
-	hal   *client.GO2HAL
 
 	monitors map[string]Monitor
 
@@ -45,10 +44,9 @@ type service struct {
 	techErrCount int
 }
 
-func NewService(hal *client.GO2HAL, store Store, monitors ...Monitor) Service {
+func NewService(store Store, monitors ...Monitor) Service {
 	s := service{
 		store: store,
-		hal:   hal,
 	}
 
 	s.monitors = map[string]Monitor{}
@@ -98,7 +96,9 @@ func (s *service) runChecks() {
 	}
 
 	//Login - get the cookie for auth
-	s.getLoginCookie()
+	ctx, seg := xray.BeginSegment(context.Background(), "Prognosis Login")
+	s.getLoginCookie(ctx)
+	seg.Close(nil)
 
 	for true {
 		s.checkPrognosis()
@@ -107,10 +107,12 @@ func (s *service) runChecks() {
 
 func (s *service) checkPrognosis() {
 	log.Println("Starting Prognosis")
+	ctx, seg := xray.BeginSegment(context.Background(), "Prognosis Check")
+	defer seg.Close(nil)
 
 	for _, monitor := range s.config.Monitors {
-
-		failed, failmsg, err := s.checkMonitor(monitor)
+		ctx, subseg := xray.BeginSubsegment(ctx, monitor.Name)
+		failed, failmsg, err := s.checkMonitor(ctx, monitor)
 		log.Printf("Output of check %v is, failed %v, failmsg: %v, error: %v", monitor.Name, failed, failmsg, err)
 
 		//If there is an error fetching data, lets handle it, but not use the results to determine the system health
@@ -118,7 +120,8 @@ func (s *service) checkPrognosis() {
 			s.techErrCount++
 			log.Printf("Tech Error count is %v", s.techErrCount)
 			if s.techErrCount == 10 {
-				s.sendMessage("10 failures detected. Attempting login to find a new host", getErrorGroup())
+				s.sendMessage(ctx, "10 failures detected. Attempting login to find a new host", getErrorGroup())
+				xray.AddError(ctx, errors.New("10 failures detected. Attempting login to find a new host"))
 				panic("10 consecutive failures")
 			}
 			continue
@@ -128,26 +131,27 @@ func (s *service) checkPrognosis() {
 		}
 
 		if failed {
-			s.handleFailed(monitor, failmsg)
+			s.handleFailed(ctx, monitor, failmsg)
 		} else {
 			_, t, _ := s.store.GetCount(monitor.Id)
 			d := time.Since(t)
 			if monitor.messageSent {
-				s.sendMessage(emoji.Sprintf(":white_check_mark: No issues detected. Errors occurred for %v", d.String()), monitor.Group)
+				s.sendMessage(ctx, emoji.Sprintf(":white_check_mark: No issues detected. Errors occurred for %v", d.String()), monitor.Group)
 			}
 			s.store.ZeroCount(monitor.Id)
 			monitor.calloutInvoked = false
 			monitor.messageSent = false
 		}
+		subseg.Close(nil)
 	}
 }
 
-func (s *service) handleFailed(monitor *monitors, failmsg string) {
+func (s *service) handleFailed(ctx context.Context, monitor *monitors, failmsg string) {
 	log.Printf("handling failure %v from %v\n", failmsg, monitor.Name)
 	err := s.store.IncreaseCount(monitor.Id)
 	if err != nil {
 		log.Println(err)
-		s.sendMessage(err.Error(), getErrorGroup())
+		s.sendMessage(ctx, err.Error(), getErrorGroup())
 	}
 	count, t, err := s.store.GetCount(monitor.Id)
 	d := time.Since(t)
@@ -155,12 +159,12 @@ func (s *service) handleFailed(monitor *monitors, failmsg string) {
 
 	if err != nil {
 		log.Println(err)
-		s.sendMessage(err.Error(), monitor.Group)
+		s.sendMessage(ctx, err.Error(), monitor.Group)
 	}
 	//Ignore the first 2 errors - this should make the alerts less noisy
 	if d > 30*time.Second {
 		log.Printf("Sendign warning for %v", monitor.Name)
-		s.sendMessage(emoji.Sprintf(":x: %v. Error has been occurring for %v.", failmsg, d.String()), monitor.Group)
+		s.sendMessage(ctx, emoji.Sprintf(":x: %v. Error has been occurring for %v.", failmsg, d.String()), monitor.Group)
 		monitor.messageSent = true
 	}
 
@@ -168,21 +172,33 @@ func (s *service) handleFailed(monitor *monitors, failmsg string) {
 	if d > 3*time.Minute {
 		if !monitor.calloutInvoked {
 			log.Printf("Invoking callout for %v\n", monitor.Name)
-			s.hal.Operations.InvokeCallout(&operations.InvokeCalloutParams{
-				Chatid:  monitor.Group,
-				Context: getTimeout(),
-				Body: &models.SendCalloutRequest{
-					Message: aws.String(fmt.Sprintf("Prognosis Issue Detected. %v", failmsg)),
-					Title:   aws.String(failmsg),
-				},
-			})
+
+			c := callout.SendCalloutRequest{
+				Message: fmt.Sprintf("Prognosis Issue Detected. %v", failmsg),
+				Title:   failmsg,
+			}
+
+			b, err := json.Marshal(c)
+			if err != nil {
+				xray.AddError(ctx, err)
+				return
+			}
+			resp, err := ctxhttp.Post(ctx, xray.Client(nil), fmt.Sprintf("%v/api/callout/%v", os.Getenv("HAL_ENDPOINT"), monitor.Group),
+				"application/json", bytes.NewReader(b))
+			if err != nil {
+				xray.AddError(ctx, err)
+				return
+			}
+			resp.Body.Close()
 			monitor.calloutInvoked = true
 		}
 	}
 	return
 }
 
-func (s *service) getLoginCookie() error {
+func (s *service) getLoginCookie(ctx context.Context) (err error) {
+	ctx, subseg := xray.BeginSubsegment(ctx, "login")
+	defer subseg.Close(err)
 	for true {
 		for i, x := range s.config.Address {
 			log.Println("Logging in")
@@ -193,14 +209,15 @@ func (s *service) getLoginCookie() error {
 			req, err := http.NewRequest("POST", fmt.Sprintf("%v/Prognosis/Login?returnUrl=/Prognosis/", x), strings.NewReader(v.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := ctxhttp.Do(ctx, http.DefaultClient, req)
 
 			if err != nil {
-				s.sendMessage("prognosis error - "+err.Error(), getErrorGroup())
+				s.sendMessage(ctx, "prognosis error - "+err.Error(), getErrorGroup())
+				xray.AddError(ctx, err)
 				continue
 			}
 			if len(resp.Cookies()) == 0 {
-				s.sendMessage("Prognosis error - No cookie found on response", getErrorGroup())
+				s.sendMessage(ctx, "Prognosis error - No cookie found on response", getErrorGroup())
 				continue
 			}
 			s.currentEnv = i
@@ -208,23 +225,26 @@ func (s *service) getLoginCookie() error {
 			s.cookie = resp.Cookies()
 			return nil
 		}
-		s.sendMessage("Unable to successfully log into prognosis... will try again in 60 seconds", getErrorGroup())
+		s.sendMessage(ctx, "Unable to successfully log into prognosis... will try again in 60 seconds", getErrorGroup())
 		time.Sleep(60 * time.Second)
 	}
 	return nil
 
 }
 
-func (s *service) checkMonitor(monitor *monitors) (failing bool, message string, err error) {
+func (s *service) checkMonitor(ctx context.Context, monitor *monitors) (failing bool, message string, err error) {
+	ctx, subseg := xray.BeginSubsegment(ctx, monitor.Name)
+	defer subseg.Close(err)
 	count := 0
 	for count < 10 {
 		if count > 0 {
 			time.Sleep(1 * time.Second)
 		}
 		count++
-		guid, err := s.getGuidForMonitor(monitor)
+		guid, err := s.getGuidForMonitor(ctx, monitor)
 		if err != nil {
 			log.Println(err)
+			xray.AddError(ctx, err)
 			continue
 		}
 		if monitor.ObjectType == "" {
@@ -235,13 +255,18 @@ func (s *service) checkMonitor(monitor *monitors) (failing bool, message string,
 			guid,
 		)
 		req, err := http.NewRequest("GET", url, strings.NewReader(""))
+		if err != nil {
+			xray.AddError(ctx, err)
+			continue
+		}
 		for _, c := range s.cookie {
 			req.AddCookie(c)
 		}
 
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := ctxhttp.Do(ctx, http.DefaultClient, req)
 		if err != nil {
 			log.Println(err)
+			xray.AddError(ctx, err)
 			continue
 		}
 		var data map[string]interface{}
@@ -249,6 +274,7 @@ func (s *service) checkMonitor(monitor *monitors) (failing bool, message string,
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			log.Println(err)
+			xray.AddError(ctx, err)
 			continue
 		}
 
@@ -259,12 +285,14 @@ func (s *service) checkMonitor(monitor *monitors) (failing bool, message string,
 		resp.Body.Close()
 		if err != nil {
 			log.Println(err)
+			xray.AddError(ctx, err)
 			continue
 		}
 
 		if data == nil {
 			err = fmt.Errorf("data nil for dashboard %v, id %v", monitor.Dashboard, guid)
 			log.Println(err)
+			xray.AddError(ctx, err)
 			continue
 		}
 
@@ -276,6 +304,7 @@ func (s *service) checkMonitor(monitor *monitors) (failing bool, message string,
 		root, ok := data[key]
 		if !ok {
 			log.Println("No valid root element found")
+			xray.AddError(ctx, errors.New("No valid root element found"))
 			continue
 		}
 		rootMap := root.(map[string]interface{})
@@ -283,6 +312,8 @@ func (s *service) checkMonitor(monitor *monitors) (failing bool, message string,
 		dataObject, ok := rootMap["Data"]
 		if !ok {
 			log.Println("No Data object found")
+			xray.AddError(ctx, errors.New("No Data object found"))
+
 			continue
 		}
 
@@ -291,6 +322,7 @@ func (s *service) checkMonitor(monitor *monitors) (failing bool, message string,
 		if len(dataArray) == 0 {
 			//Sometimes, it takes prognosis a while to wake up... so the first 10 no data we can ignore
 			log.Printf("Length of data is 0 for dashboard %v, graph %v", monitor.Dashboard, monitor.Id)
+			xray.AddError(ctx, fmt.Errorf("length of data is 0 for dashboard %v, graph %v", monitor.Dashboard, monitor.Id))
 			continue
 		}
 		dataElements := dataArray[0].([]interface{})
@@ -311,24 +343,28 @@ func (s *service) checkMonitor(monitor *monitors) (failing bool, message string,
 		return monitor.CheckResponse(input)
 
 	}
-	s.sendMessage(fmt.Sprintf("No data found after 10 attempts for dashboard %v", monitor.Id), getErrorGroup())
+	s.sendMessage(ctx, fmt.Sprintf("No data found after 10 attempts for dashboard %v", monitor.Id), getErrorGroup())
 	err = NoResultsError{Messsage: fmt.Sprintf("no data found for %v, graph %v", monitor.Dashboard, getErrorGroup())}
+	xray.AddError(ctx, err)
 	return false, "", err
 
 }
 
-func (s *service) getGuidForMonitor(monitor *monitors) (guid string, err error) {
+func (s *service) getGuidForMonitor(ctx context.Context, monitor *monitors) (guid string, err error) {
+	ctx, subseg := xray.BeginSubsegment(ctx, "Get Guid")
+	defer subseg.Close(err)
 	url := fmt.Sprintf("%v/Prognosis/Dashboard/Content/%v", s.getEndpoint(), monitor.Dashboard)
 	req, err := http.NewRequest("GET", url, strings.NewReader(""))
 	for _, c := range s.cookie {
 		req.AddCookie(c)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := ctxhttp.Do(ctx, xray.Client(nil), req)
+	defer resp.Body.Close()
 
 	doc, err := htmlquery.Parse(resp.Body)
 
 	if err != nil {
-		return
+		xray.AddError(ctx, err)
 	}
 
 	nodes := htmlquery.Find(doc, fmt.Sprintf("//div[@id='%v']", monitor.Id))
@@ -355,25 +391,23 @@ func (s *service) getGuidForMonitor(monitor *monitors) (guid string, err error) 
 		}
 	}
 	msg := fmt.Sprintf("no guid found for %v on dashboard %v. Restarting Bot", monitor.Id, getErrorGroup())
-	s.sendMessage(msg, getErrorGroup())
+	s.sendMessage(ctx, msg, getErrorGroup())
+	xray.AddError(ctx, fmt.Errorf("no guid found for %v on dashboard %v. Restarting Bot", monitor.Id, getErrorGroup()))
 	panic(msg)
 	return
 
 }
 
-func (s *service) sendMessage(message string, group int64) {
+func (s *service) sendMessage(ctx context.Context, message string, group int64) {
 	message = strings.Replace(message, "_", " ", -1)
-	resp, err := s.hal.Alert.SendTextAlert(&alert.SendTextAlertParams{
-		Context: getTimeout(),
-		Chatid:  group,
-		Message: aws.String(message),
-	})
+
+	resp, err := ctxhttp.Post(ctx, xray.Client(nil), fmt.Sprintf("%v/api/alert/%v", os.Getenv("HAL_ENDPOINT"), group),
+		"application/text", strings.NewReader(message))
+	defer resp.Body.Close()
 	if err != nil {
-		log.Println(err.Error())
+		xray.AddError(ctx, err)
 	}
-	if resp != nil {
-		log.Println(resp.Error())
-	}
+
 }
 
 type httpLogger struct {
