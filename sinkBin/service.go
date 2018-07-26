@@ -7,21 +7,26 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kinesis"
+	"github.com/aws/aws-xray-sdk-go/xray"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
+	"golang.org/x/net/context"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
 )
 
-func NewSinkBinMonitor() monitor.Monitor {
-	return &sinkBinMonitor{}
+func NewSinkBinMonitor(store Store) monitor.Monitor {
+	return &sinkBinMonitor{
+		store,
+	}
 }
 
 type sinkBinMonitor struct {
+	Store
 }
 
-func (sinkBinMonitor) CheckResponse(req [][]string) (failure bool, failuremsg string, err error) {
+func (monitor sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string) (failure bool, failuremsg string, err error) {
 
 	request := make([]*kinesis.PutRecordsRequestEntry, len(req))
 	for i, s := range req {
@@ -59,25 +64,37 @@ func (sinkBinMonitor) CheckResponse(req [][]string) (failure bool, failuremsg st
 			continue
 		}
 
+		if d.ApprovalCount+d.DenyCount < 500 {
+			continue
+		}
+
 		b, err := json.Marshal(d)
 		if err != nil {
 			log.Printf("Count not marshal %v into a byte stream", d)
 			continue
 		}
+		shard, err := monitor.Store.getShardId(d.BIN)
+		if err != nil {
+			log.Println(err.Error())
+			xray.AddError(ctx, err)
+			continue
+		}
+
 		request[i] = &kinesis.PutRecordsRequestEntry{
-			Data:         b,
-			PartitionKey: aws.String(d.Node),
+			Data:            b,
+			PartitionKey:    aws.String(d.BIN),
+			ExplicitHashKey: aws.String(strconv.FormatInt(int64(shard), 10)),
 		}
 
 	}
 
-	sendKinesis(request)
+	sendKinesis(ctx, request)
 
 	return
 
 }
 
-func sendKinesis(request []*kinesis.PutRecordsRequestEntry) {
+func sendKinesis(ctx context.Context, request []*kinesis.PutRecordsRequestEntry) {
 	c := credentials.NewEnvCredentials()
 
 	client := http.DefaultClient
@@ -87,6 +104,7 @@ func sendKinesis(request []*kinesis.PutRecordsRequestEntry) {
 	config := aws.Config{Credentials: c, Region: aws.String(os.Getenv("AWS_REGION")), HTTPClient: client}
 	sess, _ := session.NewSession(&config)
 	k := kinesis.New(sess, &config)
+	xray.AWS(k.Client)
 
 	for i := 0; i < len(request); i += 500 {
 		end := i + 500
@@ -98,7 +116,7 @@ func sendKinesis(request []*kinesis.PutRecordsRequestEntry) {
 			StreamName: aws.String("prognosis-bin"),
 			Records:    request[i:end],
 		}
-		_, err := k.PutRecords(&i)
+		_, err := k.PutRecordsWithContext(ctx, &i)
 		if err != nil {
 			log.Printf("Error putting details to amazon kinesis. Error %v", err.Error())
 		}

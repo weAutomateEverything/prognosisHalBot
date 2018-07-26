@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"fmt"
+	"golang.org/x/net/context"
 	"log"
 	"strconv"
 )
@@ -17,7 +18,7 @@ func NewResponseCode91Monitor() Monitor {
 	return &responseCode91{}
 }
 
-func (s responseCode91) CheckResponse(input [][]string) (failure bool, failuremsg string, err error) {
+func (s responseCode91) CheckResponse(ctx context.Context, input [][]string) (failure bool, failuremsg string, err error) {
 	var codes []string
 
 	for _, row := range input {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/ernesto-jimenez/httplogger"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
+	"golang.org/x/net/context"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -31,7 +32,7 @@ func (s sourceSinkMonitor) GetName() string {
 	return "SourceSink"
 }
 
-func (s sourceSinkMonitor) CheckResponse(input [][]string) (failure bool, failuremsg string, err error) {
+func (s sourceSinkMonitor) CheckResponse(ctx context.Context, input [][]string) (failure bool, failuremsg string, err error) {
 
 	for _, row := range input {
 		failed, msg := s.checkConnected(row)
