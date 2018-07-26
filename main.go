@@ -8,20 +8,26 @@ import (
 	"fmt"
 	httptransport "github.com/go-openapi/runtime/client"
 	"github.com/weAutomateEverything/go2hal/database"
-	"github.com/weAutomateEverything/prognosisHalBot/client"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"github.com/weAutomateEverything/prognosisHalBot/sourceMonitor"
 	"net/http"
 	"os/signal"
 	"syscall"
 
+	"github.com/aws/aws-xray-sdk-go/xray"
 	logger2 "github.com/go-openapi/runtime/logger"
-	"github.com/go-openapi/strfmt"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/weAutomateEverything/prognosisHalBot/sinkBin"
 )
 
 func main() {
+
+	xray.Configure(xray.Config{
+		DaemonAddr:     "127.0.0.1:2000", // default
+		LogLevel:       "info",           // default
+		ServiceVersion: "1.2.3",
+	})
+
 	var logger log.Logger
 	logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	logger = level.NewFilter(logger, level.AllowAll())
@@ -35,9 +41,7 @@ func main() {
 	transport.SetDebug(true)
 	transport.SetLogger(logger2.StandardLogger{})
 
-	c := client.New(transport, strfmt.Default)
-
-	monitor.NewService(c, monitorStore, monitor.NewResponseCode91Monitor(), monitor.NewFailureRateMonitor(),
+	monitor.NewService(monitorStore, monitor.NewResponseCode91Monitor(), monitor.NewFailureRateMonitor(),
 		sourceMonitor.NewSourceSinkMonitor(sourceStore), sinkBin.NewSinkBinMonitor())
 
 	httpLogger := log.With(logger, "component", "http")
