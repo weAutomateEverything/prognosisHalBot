@@ -24,7 +24,7 @@ import (
 )
 
 type Monitor interface {
-	CheckResponse([][]string) (failure bool, failuremsg string, err error)
+	CheckResponse(ctx context.Context, s [][]string) (failure bool, failuremsg string, err error)
 	GetName() string
 }
 
@@ -340,7 +340,7 @@ func (s *service) checkMonitor(ctx context.Context, monitor *monitors) (failing 
 		monitor.lastSuccess = time.Now().UnixNano()
 		monitor := s.monitors[monitor.Type]
 		log.Printf(monitor.GetName())
-		return monitor.CheckResponse(input)
+		return monitor.CheckResponse(ctx, input)
 
 	}
 	s.sendMessage(ctx, fmt.Sprintf("No data found after 10 attempts for dashboard %v", monitor.Id), getErrorGroup())

@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"fmt"
+	"golang.org/x/net/context"
 	"log"
 	"sort"
 	"strconv"
@@ -18,7 +19,7 @@ func NewFailureRateMonitor() Monitor {
 	return &failureRateMonitor{}
 }
 
-func (s failureRateMonitor) CheckResponse(input [][]string) (failure bool, failuremsg string, err error) {
+func (s failureRateMonitor) CheckResponse(ctx context.Context, input [][]string) (failure bool, failuremsg string, err error) {
 	result := map[string]data{}
 
 	for _, y := range input {
