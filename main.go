@@ -22,11 +22,13 @@ import (
 
 func main() {
 
-	xray.Configure(xray.Config{
-		DaemonAddr:     "127.0.0.1:2000", // default
-		LogLevel:       "info",           // default
-		ServiceVersion: "1.2.3",
-	})
+	if os.Getenv("XRAY_URL") != "" {
+		xray.Configure(xray.Config{
+			DaemonAddr:     os.Getenv("XRAY_URL"), // default
+			LogLevel:       "info",                // default
+			ServiceVersion: "1.2.3",
+		})
+	}
 
 	var logger log.Logger
 	logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
