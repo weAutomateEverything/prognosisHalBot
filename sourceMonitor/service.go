@@ -136,9 +136,9 @@ func (s sourceSinkMonitor) sendElastisearch(ctx context.Context, nodename string
 
 	resp, err := ctxhttp.Post(ctx, xray.Client(nil), fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
 		"application/text", strings.NewReader(fmt.Sprintf("connections,node=%v value=%v", nodename, count)))
+	b, _ := httputil.DumpResponse(resp, true)
+	log.Println(string(b))
 	if err != nil {
-		b, _ := httputil.DumpResponse(resp, true)
-		log.Println(string(b))
 		xray.AddError(ctx, err)
 	} else {
 		resp.Body.Close()
