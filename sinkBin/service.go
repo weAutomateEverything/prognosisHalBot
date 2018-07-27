@@ -1,59 +1,28 @@
 package sinkBin
 
 import (
-	"crypto/tls"
-	"encoding/json"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/kinesis"
+	"fmt"
 	"github.com/aws/aws-xray-sdk-go/xray"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"golang.org/x/net/context"
+	"golang.org/x/net/context/ctxhttp"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 )
 
-func NewSinkBinMonitor(store Store) monitor.Monitor {
-	ctx, seg := xray.BeginSegment(context.Background(), "Sink Bin Startup")
-	defer seg.Close(nil)
-	c := credentials.NewEnvCredentials()
-
-	client := http.DefaultClient
-	transport := http.DefaultTransport
-	transport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	client.Transport = transport
-	config := aws.Config{Credentials: c, Region: aws.String(os.Getenv("AWS_REGION")), HTTPClient: client, LogLevel: aws.LogLevel(aws.LogDebugWithHTTPBody)}
-	sess, _ := session.NewSession(&config)
-	k := kinesis.New(sess, &config)
-	xray.AWS(k.Client)
-
-	output, err := k.DescribeStreamWithContext(ctx, &kinesis.DescribeStreamInput{
-		StreamName: aws.String("prognosis-bin"),
-	})
-
-	if err != nil {
-		panic(err)
-	}
-
-	return &sinkBinMonitor{
-		store,
-		*k,
-		output.StreamDescription.Shards,
-	}
+func NewSinkBinMonitor() monitor.Monitor {
+	return &sinkBinMonitor{}
 }
 
 type sinkBinMonitor struct {
-	store  Store
-	k      kinesis.Kinesis
-	shards []*kinesis.Shard
 }
 
 func (monitor sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string) (failure bool, failuremsg string, err error) {
 
-	request := make([]*kinesis.PutRecordsRequestEntry, 0, 1000)
+	request := make([]data, 0, len(req))
 	for _, s := range req {
 		var d data
 		switch len(s) {
@@ -93,51 +62,39 @@ func (monitor sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string)
 			continue
 		}
 
-		b, err := json.Marshal(d)
-		if err != nil {
-			log.Printf("Count not marshal %v into a byte stream", d)
-			continue
-		}
-		shard, err := monitor.store.getShardId(d.BIN)
-		if err != nil {
-			log.Println(err.Error())
-			xray.AddError(ctx, err)
-			continue
-		}
-
-		request = append(request, &kinesis.PutRecordsRequestEntry{
-			Data:            b,
-			PartitionKey:    aws.String(d.BIN),
-			ExplicitHashKey: monitor.shards[shard].HashKeyRange.StartingHashKey,
-		})
-
+		request = append(request, d)
 	}
 
-	monitor.sendKinesis(ctx, request)
+	sendKinesis(ctx, request)
 
 	return
 
 }
 
-func (s sinkBinMonitor) sendKinesis(ctx context.Context, request []*kinesis.PutRecordsRequestEntry) {
-
-	for i := 0; i < len(request); i += 500 {
-		end := i + 500
-
-		if end > len(request) {
-			end = len(request)
-		}
-		i := kinesis.PutRecordsInput{
-			StreamName: aws.String("prognosis-bin"),
-			Records:    request[i:end],
-		}
-		_, err := s.k.PutRecordsWithContext(ctx, &i)
-		if err != nil {
-			log.Printf("Error putting details to amazon kinesis. Error %v", err.Error())
-		}
+func sendKinesis(ctx context.Context, request []data) {
+	s := ""
+	for _, d := range request {
+		s = s + fmt.Sprintf("transactions,node=%v,bin=%v approval=%v,valid_deny=%v,transaction_per_second=%v,system_malfunction=%v,issuer_timeout=%v,deny_count=%v\n",
+			d.Node,
+			d.BIN,
+			d.ApprovalCount,
+			d.ValidDenyCount,
+			d.TransactionPerSecond,
+			d.SystemMalfunction,
+			d.IssuerTimeout,
+			d.DenyCount,
+		)
 	}
 
-	return
+	resp, err := ctxhttp.Post(ctx, http.DefaultClient, fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
+		"application/text", strings.NewReader(s))
+	if err != nil {
+		log.Println(err)
+		xray.AddError(ctx, err)
+	} else {
+		resp.Body.Close()
+	}
+
 }
 
 func (sinkBinMonitor) GetName() string {

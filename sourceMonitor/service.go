@@ -1,15 +1,11 @@
 package sourceMonitor
 
 import (
-	"bytes"
-	"crypto/tls"
-	"crypto/x509"
-	"encoding/json"
 	"fmt"
-	"github.com/ernesto-jimenez/httplogger"
+	"github.com/aws/aws-xray-sdk-go/xray"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"golang.org/x/net/context"
-	"io/ioutil"
+	"golang.org/x/net/context/ctxhttp"
 	"log"
 	"net/http"
 	"os"
@@ -44,7 +40,7 @@ func (s sourceSinkMonitor) CheckResponse(ctx context.Context, input [][]string) 
 		}
 	}
 	for _, row := range input {
-		failed, msg := s.checkMaxConnections(row)
+		failed, msg := s.checkMaxConnections(ctx, row)
 		if failed {
 			failure = true
 		}
@@ -85,7 +81,7 @@ func (s sourceSinkMonitor) checkConnected(row []string) (failure bool, failurems
 	return
 }
 
-func (s sourceSinkMonitor) checkMaxConnections(row []string) (failure bool, failuremsg string) {
+func (s sourceSinkMonitor) checkMaxConnections(ctx context.Context, row []string) (failure bool, failuremsg string) {
 	for _, max := range s.store.getMaxConnections() {
 		if row[0] == max.Nodename {
 			v := row[2]
@@ -95,7 +91,7 @@ func (s sourceSinkMonitor) checkMaxConnections(row []string) (failure bool, fail
 				return
 			}
 			err = s.store.saveConnectionCount(max.Nodename, int(connections))
-			s.sendElastisearch(max.Nodename, int(connections))
+			s.sendElastisearch(ctx, max.Nodename, int(connections))
 			if err != nil {
 				log.Printf("There was an error saving the connection count %v", err)
 				err = nil
@@ -136,53 +132,16 @@ func (s sourceSinkMonitor) checkSend(node nodeHours) bool {
 
 }
 
-func (s sourceSinkMonitor) sendElastisearch(nodename string, count int) {
+func (s sourceSinkMonitor) sendElastisearch(ctx context.Context, nodename string, count int) {
 
-	r := elastiRequest{
-		Connections: count,
-		Node:        nodename,
-		Timestamp:   time.Now().UTC().Format(time.RFC3339),
-	}
-	doc, err := json.Marshal(r)
+	resp, err := ctxhttp.Post(ctx, http.DefaultClient, fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
+		"application/text", strings.NewReader(fmt.Sprintf("connections,node=%v value=%v", nodename, count)))
 	if err != nil {
 		log.Println(err)
-		return
+		xray.AddError(ctx, err)
+	} else {
+		resp.Body.Close()
 	}
-	log.Println(string(doc))
-	req, err := http.NewRequest("POST", os.Getenv("ELASTIC"), bytes.NewReader(doc))
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.SetBasicAuth(os.Getenv("ELASTIC_USER"), os.Getenv("ELASTIC_PASSWORD"))
-
-	b, err := ioutil.ReadFile("/cacert.pem")
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	cp := x509.NewCertPool()
-	if !cp.AppendCertsFromPEM(b) {
-		log.Println("failed to append certificates")
-		return
-	}
-	logger := monitor.NewLogger()
-
-	config := &tls.Config{RootCAs: cp}
-	transport := http.DefaultTransport
-	transport.(*http.Transport).TLSClientConfig = config
-
-	client := http.DefaultClient
-	client.Transport = httplogger.NewLoggedTransport(http.DefaultTransport, logger)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	resp.Body.Close()
 }
 
 func (s sourceSinkMonitor) checkTime(hours, impact string) bool {
