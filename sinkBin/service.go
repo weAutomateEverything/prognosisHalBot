@@ -80,7 +80,7 @@ func sendKinesis(ctx context.Context, request []data) {
 			d.BIN,
 			d.ApprovalCount,
 			d.ValidDenyCount,
-			d.TransactionPerSecond,
+			int(d.TransactionPerSecond),
 			d.SystemMalfunction,
 			d.IssuerTimeout,
 			d.DenyCount,
