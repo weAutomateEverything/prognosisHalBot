@@ -75,7 +75,7 @@ func (monitor sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string)
 func sendKinesis(ctx context.Context, request []data) {
 	s := ""
 	for _, d := range request {
-		s = s + fmt.Sprintf("transactions,node=%v,bin=%v approval=%v,valid_deny=%v,transaction_per_second=%v,system_malfunction=%v,issuer_timeout=%v,deny_count=%v\n",
+		s = s + fmt.Sprintf("transactions,node=%v,bin=%v approval=%v,valid_deny=%v,transaction_per_second=%v,system_malfunction=%v,issuer_timeout=%v,deny_count=%v,approval_rate=%v\n",
 			d.Node,
 			d.BIN,
 			d.ApprovalCount,
@@ -84,6 +84,7 @@ func sendKinesis(ctx context.Context, request []data) {
 			d.SystemMalfunction,
 			d.IssuerTimeout,
 			d.DenyCount,
+			d.ApprovalRate,
 		)
 	}
 
