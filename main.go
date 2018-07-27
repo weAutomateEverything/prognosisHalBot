@@ -21,13 +21,8 @@ import (
 )
 
 func main() {
-	var logger log.Logger
-	logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
-	logger = level.NewFilter(logger, level.AllowAll())
-	logger = log.With(logger, "ts", log.DefaultTimestamp)
 
 	if os.Getenv("XRAY_URL") != "" {
-		logger.Log("Setting XRAY url to " + os.Getenv("XRAY_URL"))
 		xray.Configure(xray.Config{
 			DaemonAddr:     os.Getenv("XRAY_URL"), // default
 			LogLevel:       "info",                // default
@@ -35,17 +30,21 @@ func main() {
 		})
 	}
 
+	var logger log.Logger
+	logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	logger = level.NewFilter(logger, level.AllowAll())
+	logger = log.With(logger, "ts", log.DefaultTimestamp)
+
 	db := database.NewConnection()
 
 	monitorStore := monitor.NewMongoStore(db)
 	sourceStore := sourceMonitor.NewMontoSourceSinkStore(db)
-	binStore := sinkBin.NewMongoStore(db)
 	transport := httptransport.New(os.Getenv("HAL_ENDPOINT"), "", nil)
 	transport.SetDebug(true)
 	transport.SetLogger(logger2.StandardLogger{})
 
 	monitor.NewService(monitorStore, monitor.NewResponseCode91Monitor(), monitor.NewFailureRateMonitor(),
-		sourceMonitor.NewSourceSinkMonitor(sourceStore), sinkBin.NewSinkBinMonitor(binStore))
+		sourceMonitor.NewSourceSinkMonitor(sourceStore), sinkBin.NewSinkBinMonitor())
 
 	httpLogger := log.With(logger, "component", "http")
 
