@@ -8,6 +8,7 @@ import (
 	"golang.org/x/net/context/ctxhttp"
 	"log"
 	"net/http"
+	"net/http/httputil"
 	"os"
 	"strconv"
 	"strings"
@@ -89,7 +90,8 @@ func sendKinesis(ctx context.Context, request []data) {
 	resp, err := ctxhttp.Post(ctx, http.DefaultClient, fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
 		"application/text", strings.NewReader(s))
 	if err != nil {
-		log.Println(err)
+		b, _ := httputil.DumpResponse(resp, true)
+		log.Println(string(b))
 		xray.AddError(ctx, err)
 	} else {
 		resp.Body.Close()
