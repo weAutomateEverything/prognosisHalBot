@@ -89,9 +89,11 @@ func sendKinesis(ctx context.Context, request []data) {
 
 	resp, err := ctxhttp.Post(ctx, http.DefaultClient, fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
 		"application/text", strings.NewReader(s))
+	b, _ := httputil.DumpResponse(resp, true)
+	log.Println(string(b))
+
 	if err != nil {
-		b, _ := httputil.DumpResponse(resp, true)
-		log.Println(string(b))
+
 		xray.AddError(ctx, err)
 	} else {
 		resp.Body.Close()
