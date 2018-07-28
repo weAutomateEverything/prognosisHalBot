@@ -84,7 +84,7 @@ func sendKinesis(ctx context.Context, request []data) {
 			d.SystemMalfunction,
 			d.IssuerTimeout,
 			d.DenyCount,
-			d.ApprovalRate,
+			int(d.ApprovalRate),
 		)
 	}
 
