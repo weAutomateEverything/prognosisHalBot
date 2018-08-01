@@ -403,10 +403,13 @@ func (s *service) sendMessage(ctx context.Context, message string, group int64) 
 
 	resp, err := ctxhttp.Post(ctx, xray.Client(nil), fmt.Sprintf("%v/api/alert/%v", os.Getenv("HAL_ENDPOINT"), group),
 		"application/text", strings.NewReader(message))
-	defer resp.Body.Close()
 	if err != nil {
 		xray.AddError(ctx, err)
+		return
 	}
+
+	resp.Body.Close()
+
 
 }
 
