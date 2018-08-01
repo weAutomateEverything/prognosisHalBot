@@ -7,11 +7,11 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 	"log"
-	"net/http/httputil"
-	"os"
+		"os"
 	"strconv"
 	"strings"
 	"time"
+	"net/http/httputil"
 )
 
 type sourceSinkMonitor struct {
@@ -136,11 +136,23 @@ func (s sourceSinkMonitor) sendElastisearch(ctx context.Context, nodename string
 
 	resp, err := ctxhttp.Post(ctx, xray.Client(nil), fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
 		"application/text", strings.NewReader(fmt.Sprintf("connections,node=%v value=%v", nodename, count)))
-	b, _ := httputil.DumpResponse(resp, true)
-	log.Println(string(b))
 	if err != nil {
 		xray.AddError(ctx, err)
 	} else {
+		resp.Body.Close()
+	}
+
+	resp, err = ctxhttp.Post(ctx,xray.Client(nil),os.Getenv("DETECTOR_ENDPOINT")+"/api/anomaly/prognosis_connections_"+nodename,"application/text",
+		strings.NewReader(fmt.Sprintf("%v",count)))
+	if err != nil {
+		xray.AddError(ctx, err)
+	} else {
+		b, err := httputil.DumpResponse(resp,true)
+		if err != nil {
+			log.Println(err)
+		} else {
+			log.Println(string(b))
+		}
 		resp.Body.Close()
 	}
 }

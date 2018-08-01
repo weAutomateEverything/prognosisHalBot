@@ -18,6 +18,7 @@ import (
 	logger2 "github.com/go-openapi/runtime/logger"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/weAutomateEverything/prognosisHalBot/sinkBin"
+	"github.com/weAutomateEverything/mockXray"
 )
 
 func main() {
@@ -28,6 +29,8 @@ func main() {
 			LogLevel:       "info",                // default
 			ServiceVersion: "1.2.3",
 		})
+	} else {
+		mockXray.StartMockXrayServer()
 	}
 
 	var logger log.Logger
