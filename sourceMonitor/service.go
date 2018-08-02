@@ -1,13 +1,13 @@
 package sourceMonitor
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/aws/aws-xray-sdk-go/xray"
 	"github.com/weAutomateEverything/anomalyDetectionHal/detector"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
+	"google.golang.org/grpc"
 	"log"
 	"os"
 	"strconv"
@@ -16,12 +16,20 @@ import (
 )
 
 type sourceSinkMonitor struct {
-	store Store
+	store  Store
+	client detector.AnomalyDetectorClient
 }
 
 func NewSourceSinkMonitor(store Store) monitor.Monitor {
+	conn, err := grpc.Dial(os.Getenv("DETECTOR_ENDPOINT"), grpc.WithInsecure())
+	if err != nil {
+		panic(err)
+	}
+	c := detector.NewAnomalyDetectorClient(conn)
+
 	return &sourceSinkMonitor{
-		store: store,
+		store:  store,
+		client: c,
 	}
 }
 
@@ -126,23 +134,22 @@ func (s sourceSinkMonitor) saveAndValidate(ctx context.Context, nodename string,
 		resp.Body.Close()
 	}
 
-	resp, err = ctxhttp.Post(ctx, xray.Client(nil), os.Getenv("DETECTOR_ENDPOINT")+"/api/anomaly/prognosis_connections_"+nodename, "application/text",
-		strings.NewReader(fmt.Sprintf("%v", count)))
-	if err != nil {
-		xray.AddError(ctx, err)
-	} else {
-		var anomaly detector.AnomalyAddDataResponse
-		err = json.NewDecoder(resp.Body).Decode(&anomaly)
-		if err != nil {
-			xray.AddError(ctx, err)
-			return false, ""
-		}
-
-		if anomaly.AnomalyScore > 3 {
-			return true, anomaly.Explination
-		}
-
+	d := detector.InputData{
+		Value: float64(count),
+		Key:   "prognosis_connections_" + nodename,
 	}
+	out, err := s.client.AnalyseData(ctx, &d)
+
+	if err != nil {
+		log.Println(err)
+		xray.AddError(ctx, err)
+		return false, ""
+	}
+
+	if out.Score > 3 {
+		return true, out.Explanation
+	}
+
 	return false, ""
 }
 

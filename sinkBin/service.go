@@ -1,13 +1,13 @@
 package sinkBin
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/aws/aws-xray-sdk-go/xray"
 	"github.com/weAutomateEverything/anomalyDetectionHal/detector"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
+	"google.golang.org/grpc"
 	"log"
 	"os"
 	"strconv"
@@ -15,10 +15,20 @@ import (
 )
 
 func NewSinkBinMonitor() monitor.Monitor {
-	return &sinkBinMonitor{}
+
+	conn, err := grpc.Dial(os.Getenv("DETECTOR_ENDPOINT"), grpc.WithInsecure())
+	if err != nil {
+		panic(err)
+	}
+	c := detector.NewAnomalyDetectorClient(conn)
+
+	return &sinkBinMonitor{
+		client: c,
+	}
 }
 
 type sinkBinMonitor struct {
+	client detector.AnomalyDetectorClient
 }
 
 func (monitor sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string) (failure bool, failuremsg string, err error) {
@@ -112,30 +122,22 @@ func (m sinkBinMonitor) saveAndValidate(ctx context.Context, request []data) (fa
 
 }
 
-func (sinkBinMonitor) validateAnomaly(ctx context.Context, value float64, index string) (failed bool, msg string) {
-	resp, err := ctxhttp.Post(ctx, xray.Client(nil), os.Getenv("DETECTOR_ENDPOINT")+"/api/anomaly/"+index, "application/text",
-		strings.NewReader(fmt.Sprintf("%v", value)))
+func (s sinkBinMonitor) validateAnomaly(ctx context.Context, value float64, index string) (failed bool, msg string) {
+	i := detector.InputData{
+		Key:   index,
+		Value: value,
+	}
 
+	resp, err := s.client.AnalyseData(ctx, &i)
 	if err != nil {
 		xray.AddError(ctx, err)
 		return
 	}
 
-	var v detector.AnomalyAddDataResponse
-	err = json.NewDecoder(resp.Body).Decode(&v)
-
-	if err != nil {
-		xray.AddError(ctx, err)
-		return
-	}
-
-	if v.AnomalyScore > 3 {
+	if resp.Score > 3 {
 		failed = true
-		msg = v.Explination
+		msg = resp.Explanation
 	}
-
-	resp.Body.Close()
-
 	return
 }
 
