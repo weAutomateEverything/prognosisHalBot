@@ -69,8 +69,9 @@ func (monitor sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string)
 }
 
 func (m sinkBinMonitor) saveAndValidate(ctx context.Context, request []data) (failed bool, msg string) {
+	s := ""
 	for _, d := range request {
-		s := fmt.Sprintf("transactions,node=%v,bin=%v approval=%v,valid_deny=%v,transaction_per_second=%v,system_malfunction=%v,issuer_timeout=%v,deny_count=%v,approval_rate=%v",
+		s = s + fmt.Sprintf("transactions,node=%v,bin=%v approval=%v,valid_deny=%v,transaction_per_second=%v,system_malfunction=%v,issuer_timeout=%v,deny_count=%v,approval_rate=%v\n",
 			d.Node,
 			d.BIN,
 			d.ApprovalCount,
@@ -81,15 +82,6 @@ func (m sinkBinMonitor) saveAndValidate(ctx context.Context, request []data) (fa
 			d.DenyCount,
 			int(d.ApprovalRate),
 		)
-
-		resp, err := ctxhttp.Post(ctx, xray.Client(nil), fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
-			"application/text", strings.NewReader(s))
-
-		if err != nil {
-			xray.AddError(ctx, err)
-		} else {
-			resp.Body.Close()
-		}
 
 		if d.BIN == "" {
 			continue
@@ -107,6 +99,14 @@ func (m sinkBinMonitor) saveAndValidate(ctx context.Context, request []data) (fa
 			msg = msg + "Anomaly detected in the approval rate for bin " + d.BIN + " " + r + "\n"
 		}
 
+	}
+	resp, err := ctxhttp.Post(ctx, xray.Client(nil), fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
+		"application/text", strings.NewReader(s))
+
+	if err != nil {
+		xray.AddError(ctx, err)
+	} else {
+		resp.Body.Close()
 	}
 	return
 
