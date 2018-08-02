@@ -1,17 +1,18 @@
 package sourceMonitor
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/aws/aws-xray-sdk-go/xray"
+	"github.com/weAutomateEverything/anomalyDetectionHal/detector"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 	"log"
-		"os"
+	"os"
 	"strconv"
 	"strings"
 	"time"
-	"net/http/httputil"
 )
 
 type sourceSinkMonitor struct {
@@ -90,32 +91,15 @@ func (s sourceSinkMonitor) checkMaxConnections(ctx context.Context, row []string
 				log.Printf("unable to parse %v as a int for max value", v)
 				return
 			}
-			err = s.store.saveConnectionCount(max.Nodename, int(connections))
-			s.sendElastisearch(ctx, max.Nodename, int(connections))
-			if err != nil {
-				log.Printf("There was an error saving the connection count %v", err)
-				err = nil
-			}
-			avg, err := s.store.getConnectionCount(max.Nodename)
-			if err != nil {
-				log.Printf("No conneciton found found. %v", err.Error())
-				return
-			}
+			failed, msg := s.saveAndValidate(ctx, max.Nodename, int(connections))
 
-			if float64(connections)/avg > 2 {
-				failuremsg = fmt.Sprintf("Normally at this time I excpect node %v to have %v connections. Currently there are %v connections. ", max.Nodename, avg, connections)
-				if connections > int64(max.Maxval) {
-					failuremsg = failuremsg + fmt.Sprintf("Since there are more than %v connections, I am marking this as an error", max.Maxval)
-					failure = true
-				}
-				log.Println(failuremsg)
+			if failed {
+				failure = true
+				failuremsg = failuremsg + "\n" + msg
 			}
-			return
-
 		}
 	}
 	return
-
 }
 
 func (s sourceSinkMonitor) checkSend(node nodeHours) bool {
@@ -132,7 +116,7 @@ func (s sourceSinkMonitor) checkSend(node nodeHours) bool {
 
 }
 
-func (s sourceSinkMonitor) sendElastisearch(ctx context.Context, nodename string, count int) {
+func (s sourceSinkMonitor) saveAndValidate(ctx context.Context, nodename string, count int) (bool, string) {
 
 	resp, err := ctxhttp.Post(ctx, xray.Client(nil), fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
 		"application/text", strings.NewReader(fmt.Sprintf("connections,node=%v value=%v", nodename, count)))
@@ -142,19 +126,24 @@ func (s sourceSinkMonitor) sendElastisearch(ctx context.Context, nodename string
 		resp.Body.Close()
 	}
 
-	resp, err = ctxhttp.Post(ctx,xray.Client(nil),os.Getenv("DETECTOR_ENDPOINT")+"/api/anomaly/prognosis_connections_"+nodename,"application/text",
-		strings.NewReader(fmt.Sprintf("%v",count)))
+	resp, err = ctxhttp.Post(ctx, xray.Client(nil), os.Getenv("DETECTOR_ENDPOINT")+"/api/anomaly/prognosis_connections_"+nodename, "application/text",
+		strings.NewReader(fmt.Sprintf("%v", count)))
 	if err != nil {
 		xray.AddError(ctx, err)
 	} else {
-		b, err := httputil.DumpResponse(resp,true)
+		var anomaly detector.AnomalyAddDataResponse
+		err = json.NewDecoder(resp.Body).Decode(&anomaly)
 		if err != nil {
-			log.Println(err)
-		} else {
-			log.Println(string(b))
+			xray.AddError(ctx, err)
+			return false, ""
 		}
-		resp.Body.Close()
+
+		if anomaly.AnomalyScore > 3 {
+			return true, anomaly.Explination
+		}
+
 	}
+	return false, ""
 }
 
 func (s sourceSinkMonitor) checkTime(hours, impact string) bool {

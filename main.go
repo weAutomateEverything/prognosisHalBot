@@ -17,8 +17,8 @@ import (
 	"github.com/aws/aws-xray-sdk-go/xray"
 	logger2 "github.com/go-openapi/runtime/logger"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/weAutomateEverything/prognosisHalBot/sinkBin"
 	"github.com/weAutomateEverything/mockXray"
+	"github.com/weAutomateEverything/prognosisHalBot/sinkBin"
 )
 
 func main() {

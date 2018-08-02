@@ -1,14 +1,14 @@
 package sinkBin
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/aws/aws-xray-sdk-go/xray"
+	"github.com/weAutomateEverything/anomalyDetectionHal/detector"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 	"log"
-	"net/http"
-	"net/http/httputil"
 	"os"
 	"strconv"
 	"strings"
@@ -59,23 +59,18 @@ func (monitor sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string)
 			continue
 		}
 
-		if d.ApprovalCount+d.DenyCount < 500 {
-			continue
-		}
-
 		request = append(request, d)
 	}
 
-	sendKinesis(ctx, request)
+	failure, failuremsg = monitor.saveAndValidate(ctx, request)
 
 	return
 
 }
 
-func sendKinesis(ctx context.Context, request []data) {
-	s := ""
+func (m sinkBinMonitor) saveAndValidate(ctx context.Context, request []data) (failed bool, msg string) {
 	for _, d := range request {
-		s = s + fmt.Sprintf("transactions,node=%v,bin=%v approval=%v,valid_deny=%v,transaction_per_second=%v,system_malfunction=%v,issuer_timeout=%v,deny_count=%v,approval_rate=%v\n",
+		s := fmt.Sprintf("transactions,node=%v,bin=%v approval=%v,valid_deny=%v,transaction_per_second=%v,system_malfunction=%v,issuer_timeout=%v,deny_count=%v,approval_rate=%v",
 			d.Node,
 			d.BIN,
 			d.ApprovalCount,
@@ -86,20 +81,62 @@ func sendKinesis(ctx context.Context, request []data) {
 			d.DenyCount,
 			int(d.ApprovalRate),
 		)
-	}
 
-	resp, err := ctxhttp.Post(ctx, http.DefaultClient, fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
-		"application/text", strings.NewReader(s))
-	b, _ := httputil.DumpResponse(resp, true)
-	log.Println(string(b))
+		resp, err := ctxhttp.Post(ctx, xray.Client(nil), fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
+			"application/text", strings.NewReader(s))
+
+		if err != nil {
+			xray.AddError(ctx, err)
+		} else {
+			resp.Body.Close()
+		}
+
+		if d.BIN == "" {
+			continue
+		}
+
+		f, r := m.validateAnomaly(ctx, float64(d.DenyCount), "prognosis_deny_"+d.BIN)
+		if f {
+			failed = true
+			msg = msg + "Anomaly detected in the deny rate for bin " + d.BIN + " " + r + "\n"
+		}
+
+		f, r = m.validateAnomaly(ctx, d.ApprovalRate, "prognosis_approval_rate_"+d.BIN)
+		if f {
+			failed = true
+			msg = msg + "Anomaly detected in the approval rate for bin " + d.BIN + " " + r + "\n"
+		}
+
+	}
+	return
+
+}
+
+func (sinkBinMonitor) validateAnomaly(ctx context.Context, value float64, index string) (failed bool, msg string) {
+	resp, err := ctxhttp.Post(ctx, xray.Client(nil), os.Getenv("DETECTOR_ENDPOINT")+"/api/anomaly/"+index, "application/text",
+		strings.NewReader(fmt.Sprintf("%v", value)))
 
 	if err != nil {
-
 		xray.AddError(ctx, err)
-	} else {
-		resp.Body.Close()
+		return
 	}
 
+	var v detector.AnomalyAddDataResponse
+	err = json.NewDecoder(resp.Body).Decode(&v)
+
+	if err != nil {
+		xray.AddError(ctx, err)
+		return
+	}
+
+	if v.AnomalyScore > 3 {
+		failed = true
+		msg = v.Explination
+	}
+
+	resp.Body.Close()
+
+	return
 }
 
 func (sinkBinMonitor) GetName() string {

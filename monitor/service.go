@@ -410,7 +410,6 @@ func (s *service) sendMessage(ctx context.Context, message string, group int64) 
 
 	resp.Body.Close()
 
-
 }
 
 type httpLogger struct {
