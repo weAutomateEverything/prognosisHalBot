@@ -1,0 +1,29 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+    # printenv
+    # pwd
+    - mkdir -p /go/src/github.com/weAutomateEverything/prognosisHalBot
+    - cp -R * /go/src/github.com/weAutomateEverything/prognosisHalBot/
+  pre_build:
+    commands:
+
+    finally:
+
+  build:
+    commands:
+    - go get github.com/weAutomateEverything/prognosisHalBot
+    - go build -ldflags '-linkmode=external' -o ./propgnosis github.com/weAutomateEverything/prognosisHalBot
+  post_build:
+    commands:
+
+    finally:
+
+artifacts:
+  files:
+  - prognosis
+  - Dockerfile
+cache:
+  paths:
