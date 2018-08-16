@@ -16,7 +16,7 @@ RUN mkdir -p "$DT_HOME" && \
 WORKDIR /
 # Now just add the binary
 COPY prognosis /
-COPY cacert.pem /
+#COPY cacert.pem /
 EXPOSE 8001
 
 ENTRYPOINT ["/opt/dynatrace/oneagent/dynatrace-agent64.sh"]
