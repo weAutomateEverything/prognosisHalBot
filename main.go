@@ -14,24 +14,14 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/aws/aws-xray-sdk-go/xray"
 	logger2 "github.com/go-openapi/runtime/logger"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/weAutomateEverything/mockXray"
 	"github.com/weAutomateEverything/prognosisHalBot/sinkBin"
+
+	_ "net/http/pprof"
 )
 
 func main() {
-
-	if os.Getenv("XRAY_URL") != "" {
-		xray.Configure(xray.Config{
-			DaemonAddr:     os.Getenv("XRAY_URL"), // default
-			LogLevel:       "info",                // default
-			ServiceVersion: "1.2.3",
-		})
-	} else {
-		mockXray.StartMockXrayServer()
-	}
 
 	var logger log.Logger
 	logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
