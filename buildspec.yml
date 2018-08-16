@@ -15,7 +15,7 @@ phases:
   build:
     commands:
     - go get github.com/weAutomateEverything/prognosisHalBot
-    - go build -ldflags '-linkmode=external' -o ./propgnosis github.com/weAutomateEverything/prognosisHalBot
+    - go build -ldflags '-linkmode=external' -o ./prognosis github.com/weAutomateEverything/prognosisHalBot
   post_build:
     commands:
 
