@@ -2,13 +2,12 @@ package sourceMonitor
 
 import (
 	"fmt"
-	"github.com/aws/aws-xray-sdk-go/xray"
 	"github.com/weAutomateEverything/anomalyDetectionHal/detector"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"golang.org/x/net/context"
-	"golang.org/x/net/context/ctxhttp"
 	"google.golang.org/grpc"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -126,10 +125,10 @@ func (s sourceSinkMonitor) checkSend(node nodeHours) bool {
 
 func (s sourceSinkMonitor) saveAndValidate(ctx context.Context, nodename string, count int) (bool, string) {
 
-	resp, err := ctxhttp.Post(ctx, xray.Client(nil), fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
+	resp, err := http.Post(fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
 		"application/text", strings.NewReader(fmt.Sprintf("connections,node=%v value=%v", nodename, count)))
 	if err != nil {
-		xray.AddError(ctx, err)
+		log.Println(err)
 	} else {
 		resp.Body.Close()
 	}
@@ -142,7 +141,6 @@ func (s sourceSinkMonitor) saveAndValidate(ctx context.Context, nodename string,
 
 	if err != nil {
 		log.Println(err)
-		xray.AddError(ctx, err)
 		return false, ""
 	}
 

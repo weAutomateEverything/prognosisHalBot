@@ -2,13 +2,12 @@ package sinkBin
 
 import (
 	"fmt"
-	"github.com/aws/aws-xray-sdk-go/xray"
 	"github.com/weAutomateEverything/anomalyDetectionHal/detector"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"golang.org/x/net/context"
-	"golang.org/x/net/context/ctxhttp"
 	"google.golang.org/grpc"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -110,11 +109,11 @@ func (m sinkBinMonitor) saveAndValidate(ctx context.Context, request []data) (fa
 		}
 
 	}
-	resp, err := ctxhttp.Post(ctx, xray.Client(nil), fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
+	resp, err := http.Post(fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
 		"application/text", strings.NewReader(s))
 
 	if err != nil {
-		xray.AddError(ctx, err)
+		log.Println(err)
 	} else {
 		resp.Body.Close()
 	}
@@ -130,7 +129,7 @@ func (s sinkBinMonitor) validateAnomaly(ctx context.Context, value float64, inde
 
 	resp, err := s.client.AnalyseData(ctx, &i)
 	if err != nil {
-		xray.AddError(ctx, err)
+		log.Println(err)
 		return
 	}
 
