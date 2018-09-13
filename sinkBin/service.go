@@ -1,11 +1,11 @@
 package sinkBin
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/weAutomateEverything/anomalyDetectionHal/detector"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"golang.org/x/net/context"
-	"google.golang.org/grpc"
 	"log"
 	"net/http"
 	"os"
@@ -15,15 +15,7 @@ import (
 
 func NewSinkBinMonitor() monitor.Monitor {
 
-	conn, err := grpc.Dial(os.Getenv("DETECTOR_ENDPOINT"), grpc.WithInsecure())
-	if err != nil {
-		panic(err)
-	}
-	c := detector.NewAnomalyDetectorClient(conn)
-
-	return &sinkBinMonitor{
-		client: c,
-	}
+	return &sinkBinMonitor{}
 }
 
 type sinkBinMonitor struct {
@@ -32,7 +24,16 @@ type sinkBinMonitor struct {
 
 func (monitor sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string) (failure bool, failuremsg string, err error) {
 
-	request := make([]data, 0, len(req))
+	log.Printf("processing %v records", len(req))
+	jobs := make(chan data, len(req))
+	results := make(chan validationResult, len(req))
+
+	log.Println("starting workers")
+	for w := 1; w <= 10; w++ {
+		go monitor.saveAndValidate(ctx, jobs, results)
+	}
+
+	c := 0
 	for _, s := range req {
 		var d data
 		switch len(s) {
@@ -68,18 +69,31 @@ func (monitor sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string)
 			continue
 		}
 
-		request = append(request, d)
+		jobs <- d
+		c++
 	}
 
-	failure, failuremsg = monitor.saveAndValidate(ctx, request)
+	log.Println("closing job")
+	close(jobs)
 
+	log.Printf("waiting for %v results", c)
+	for a := 1; a <= c; a++ {
+		i := <-results
+		if i.failed {
+			failure = true
+			failuremsg = failuremsg + i.msg + "\n"
+		}
+	}
+
+	log.Println("Done")
 	return
 
 }
 
-func (m sinkBinMonitor) saveAndValidate(ctx context.Context, request []data) (failed bool, msg string) {
-	s := ""
-	for _, d := range request {
+func (m sinkBinMonitor) saveAndValidate(ctx context.Context, requests <-chan data, result chan<- validationResult) {
+	for d := range requests {
+		s := ""
+		v := validationResult{}
 		s = s + fmt.Sprintf("transactions,node=%v,bin=%v approval=%v,valid_deny=%v,transaction_per_second=%v,system_malfunction=%v,issuer_timeout=%v,deny_count=%v,approval_rate=%v\n",
 			d.Node,
 			d.BIN,
@@ -98,45 +112,54 @@ func (m sinkBinMonitor) saveAndValidate(ctx context.Context, request []data) (fa
 
 		f, r := m.validateAnomaly(ctx, float64(d.DenyCount), "prognosis_deny_"+d.BIN)
 		if f {
-			failed = true
-			msg = msg + "Anomaly detected in the deny rate for bin " + d.BIN + " " + r + "\n"
+			v.failed = true
+			v.msg = "Anomaly detected in the deny rate for bin " + d.BIN + " " + r + "\n"
 		}
 
 		f, r = m.validateAnomaly(ctx, d.ApprovalRate, "prognosis_approval_rate_"+d.BIN)
 		if f {
-			failed = true
-			msg = msg + "Anomaly detected in the approval rate for bin " + d.BIN + " " + r + "\n"
+			v.failed = true
+			v.msg = "Anomaly detected in the approval rate for bin " + d.BIN + " " + r + "\n"
 		}
 
-	}
-	resp, err := http.Post(fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
-		"application/text", strings.NewReader(s))
+		resp, err := http.Post(fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
+			"application/text", strings.NewReader(s))
 
-	if err != nil {
-		log.Println(err)
-	} else {
-		resp.Body.Close()
+		if err != nil {
+			log.Println(err)
+		} else {
+			resp.Body.Close()
+		}
+		result <- v
 	}
-	return
 
 }
 
 func (s sinkBinMonitor) validateAnomaly(ctx context.Context, value float64, index string) (failed bool, msg string) {
-	i := detector.InputData{
-		Key:   index,
-		Value: value,
-	}
 
-	resp, err := s.client.AnalyseData(ctx, &i)
+	resp, err := http.Post(os.Getenv("DETECTOR_ENDPOINT")+"/api/anomaly/"+index, "application/text",
+		strings.NewReader(fmt.Sprintf("%v", value)))
+
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	if resp.Score > 3 {
-		failed = true
-		msg = resp.Explanation
+	var v detector.AnomalyAddDataResponse
+	err = json.NewDecoder(resp.Body).Decode(&v)
+
+	if err != nil {
+		log.Println(err)
+		return
 	}
+
+	if v.AnomalyScore > 3 {
+		failed = true
+		msg = v.Explination
+	}
+
+	resp.Body.Close()
+
 	return
 }
 
@@ -163,6 +186,10 @@ func getFloat(s string) (x float64) {
 	return
 }
 
+type validationResult struct {
+	failed bool
+	msg    string
+}
 type data struct {
 	Node                 string
 	BIN                  string
