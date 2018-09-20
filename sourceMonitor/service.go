@@ -96,14 +96,18 @@ func (s sourceSinkMonitor) checkMaxConnections(ctx context.Context, row []string
 			connections, err := strconv.ParseInt(v, 10, 64)
 			if err != nil {
 				log.Printf("unable to parse %v as a int for max value", v)
-				return
+				continue
 			}
 			failed, msg := s.saveAndValidate(ctx, max.Nodename, int(connections))
-
 			if failed {
 				failure = true
 				failuremsg = failuremsg + "\n" + msg
 			}
+			if connections == 0 {
+				failure = true
+				failuremsg = failuremsg + "\n" + fmt.Sprintf("0 Connections detected on %v", max.Nodename)
+			}
+
 		}
 	}
 	return
