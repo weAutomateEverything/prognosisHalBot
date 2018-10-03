@@ -19,7 +19,7 @@ func NewFailureRateMonitor() Monitor {
 	return &failureRateMonitor{}
 }
 
-func (s failureRateMonitor) CheckResponse(ctx context.Context, input [][]string) (failure bool, failuremsg string, err error) {
+func (s failureRateMonitor) CheckResponse(ctx context.Context, input [][]string) (response []Response, err error) {
 	result := map[string]data{}
 
 	for _, y := range input {
@@ -47,20 +47,22 @@ func (s failureRateMonitor) CheckResponse(ctx context.Context, input [][]string)
 
 	if row.approved == 0 {
 		if row.failed > 0 {
-			failuremsg = fmt.Sprintf("No successful transactions found, only failed transactions (%v) ", row.failed)
-			log.Printf(failuremsg)
-			failure = true
+			response = append(response, Response{
+				FailureMsg: fmt.Sprintf("No successful transactions found, only failed transactions (%v) ", row.failed),
+				Failure:    true,
+			})
 		}
 		return
 	}
 
 	if row.failed/row.approved > 20/100 {
-		failuremsg = fmt.Sprintf("There is a high number of failed transactions (%v) when compared to successful transactions (%v)", row.failed, row.approved)
-		log.Printf(failuremsg)
-		failure = true
+		response = append(response, Response{
+			FailureMsg: fmt.Sprintf("There is a high number of failed transactions (%v) when compared to successful transactions (%v)", row.failed, row.approved),
+			Failure:    true,
+		})
 		return
 	}
-
+	response = append(response, Response{})
 	return
 }
 

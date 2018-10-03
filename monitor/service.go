@@ -20,11 +20,17 @@ import (
 )
 
 type Monitor interface {
-	CheckResponse(ctx context.Context, s [][]string) (failure bool, failuremsg string, err error)
+	CheckResponse(ctx context.Context, s [][]string) (response []Response, err error)
 	GetName() string
 }
 
 type Service interface {
+}
+
+type Response struct {
+	Key        string
+	Failure    bool
+	FailureMsg string
 }
 
 type service struct {
@@ -102,8 +108,7 @@ func (s *service) checkPrognosis() {
 	ctx := context.Background()
 
 	for _, monitor := range s.config.Monitors {
-		failed, failmsg, err := s.checkMonitor(ctx, monitor)
-		log.Printf("Output of check %v is, failed %v, failmsg: %v, error: %v", monitor.Name, failed, failmsg, err)
+		response, err := s.checkMonitor(ctx, monitor)
 
 		//If there is an error fetching data, lets handle it, but not use the results to determine the system health
 		if err != nil {
@@ -114,56 +119,57 @@ func (s *service) checkPrognosis() {
 				panic("10 consecutive failures")
 			}
 			continue
-		} else {
-			log.Println("setting tech error count to 0")
-			s.techErrCount = 0
 		}
+		log.Println("setting tech error count to 0")
+		s.techErrCount = 0
 
-		if failed {
-			s.handleFailed(ctx, monitor, failmsg)
-		} else {
-			_, t, _ := s.store.GetCount(monitor.Id)
-			d := time.Since(t)
-			if monitor.messageSent {
-				s.sendMessage(ctx, emoji.Sprintf(":white_check_mark: No issues detected. Errors occurred for %v", d.String()), monitor.Group)
+		for _, resp := range response {
+			if resp.Failure {
+				s.handleFailed(ctx, monitor, resp)
+			} else {
+				_, t, _ := s.store.GetCount(monitor.Id, resp.Key)
+				d := time.Since(t)
+				if monitor.messageSent {
+					s.sendMessage(ctx, emoji.Sprintf(":white_check_mark: No issues detected for %v %v. Errors occurred for %v", monitor.Name, resp.Key, d.String()), monitor.Group)
+				}
+				s.store.ZeroCount(monitor.Id, resp.Key)
+				monitor.calloutInvoked = false
+				monitor.messageSent = false
 			}
-			s.store.ZeroCount(monitor.Id)
-			monitor.calloutInvoked = false
-			monitor.messageSent = false
 		}
 	}
 }
 
-func (s *service) handleFailed(ctx context.Context, monitor *monitors, failmsg string) {
-	log.Printf("handling failure %v from %v\n", failmsg, monitor.Name)
-	err := s.store.IncreaseCount(monitor.Id)
+func (s *service) handleFailed(ctx context.Context, monitor *monitors, response Response) {
+	err := s.store.IncreaseCount(monitor.Id, response.Key)
 	if err != nil {
 		log.Println(err)
 		s.sendMessage(ctx, err.Error(), getErrorGroup())
+		return
 	}
-	count, t, err := s.store.GetCount(monitor.Id)
+	_, t, err := s.store.GetCount(monitor.Id, response.Key)
 	d := time.Since(t)
-	log.Printf("errror count is %v for %v\n", count, monitor.Name)
 
 	if err != nil {
 		log.Println(err)
-		s.sendMessage(ctx, err.Error(), monitor.Group)
+		s.sendMessage(ctx, err.Error(), getErrorGroup())
+		return
 	}
 	//Ignore the first 2 errors - this should make the alerts less noisy
 	if d > 30*time.Second {
 		log.Printf("Sendign warning for %v", monitor.Name)
-		s.sendMessage(ctx, emoji.Sprintf(":x: %v. Error has been occurring for %v.", failmsg, d.String()), monitor.Group)
+		s.sendMessage(ctx, emoji.Sprintf(":x: %v. Error has been occurring for %v.", response.FailureMsg, d.String()), monitor.Group)
 		monitor.messageSent = true
 	}
 
 	//After 15 alerts, lets invoke callout
 	if d > 3*time.Minute {
 		if !monitor.calloutInvoked {
-			log.Printf("Invoking callout for %v\n", monitor.Name)
+			log.Printf("Invoking callout for %v %v\n", monitor.Name, response.Key)
 
 			c := callout.SendCalloutRequest{
-				Message: fmt.Sprintf("Prognosis Issue Detected. %v", failmsg),
-				Title:   failmsg,
+				Message: fmt.Sprintf("Prognosis Issue Detected. %v", response.FailureMsg),
+				Title:   response.FailureMsg,
 			}
 
 			b, err := json.Marshal(c)
@@ -215,7 +221,7 @@ func (s *service) getLoginCookie(ctx context.Context) (err error) {
 
 }
 
-func (s *service) checkMonitor(ctx context.Context, monitor *monitors) (failing bool, message string, err error) {
+func (s *service) checkMonitor(ctx context.Context, monitor *monitors) (response []Response, err error) {
 	count := 0
 	for count < 10 {
 		if count > 0 {
@@ -316,7 +322,7 @@ func (s *service) checkMonitor(ctx context.Context, monitor *monitors) (failing 
 	}
 	s.sendMessage(ctx, fmt.Sprintf("No data found after 10 attempts for dashboard %v", monitor.Id), getErrorGroup())
 	err = NoResultsError{Messsage: fmt.Sprintf("no data found for %v, graph %v", monitor.Dashboard, getErrorGroup())}
-	return false, "", err
+	return nil, err
 
 }
 
