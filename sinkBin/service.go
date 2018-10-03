@@ -22,7 +22,7 @@ type sinkBinMonitor struct {
 	client detector.AnomalyDetectorClient
 }
 
-func (monitor sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string) (failure bool, failuremsg string, err error) {
+func (m sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string) (response []monitor.Response, err error) {
 
 	log.Printf("processing %v records", len(req))
 	jobs := make(chan data, len(req))
@@ -30,7 +30,7 @@ func (monitor sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string)
 
 	log.Println("starting workers")
 	for w := 1; w <= 10; w++ {
-		go monitor.saveAndValidate(ctx, jobs, results)
+		go m.saveAndValidate(ctx, jobs, results)
 	}
 
 	c := 0
@@ -76,12 +76,15 @@ func (monitor sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string)
 	log.Println("closing job")
 	close(jobs)
 
+	response = make([]monitor.Response, c)
+
 	log.Printf("waiting for %v results", c)
 	for a := 1; a <= c; a++ {
 		i := <-results
-		if i.failed {
-			failure = true
-			failuremsg = failuremsg + i.msg + "\n"
+		response[a-1] = monitor.Response{
+			FailureMsg: i.msg,
+			Key:        i.key,
+			Failure:    i.failed,
 		}
 	}
 
@@ -111,6 +114,7 @@ func (m sinkBinMonitor) saveAndValidate(ctx context.Context, requests <-chan dat
 		}
 
 		f, r := m.validateAnomaly(ctx, float64(d.DenyCount), "prognosis_deny_"+d.BIN)
+		v.key = d.BIN
 		if f {
 			v.failed = true
 			v.msg = "Anomaly detected in the deny rate for bin " + d.BIN + " " + r + "\n"
@@ -119,7 +123,7 @@ func (m sinkBinMonitor) saveAndValidate(ctx context.Context, requests <-chan dat
 		f, r = m.validateAnomaly(ctx, d.ApprovalRate, "prognosis_approval_rate_"+d.BIN)
 		if f {
 			v.failed = true
-			v.msg = "Anomaly detected in the *approval rate* for bin " + d.BIN + "\n" + r + "\n\n"
+			v.msg = v.msg + "Anomaly detected in the *approval rate* for bin " + d.BIN + "\n" + r + "\n\n"
 		}
 
 		resp, err := http.Post(fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
@@ -130,6 +134,7 @@ func (m sinkBinMonitor) saveAndValidate(ctx context.Context, requests <-chan dat
 		} else {
 			resp.Body.Close()
 		}
+
 		result <- v
 	}
 
@@ -189,6 +194,7 @@ func getFloat(s string) (x float64) {
 type validationResult struct {
 	failed bool
 	msg    string
+	key    string
 }
 type data struct {
 	Node                 string

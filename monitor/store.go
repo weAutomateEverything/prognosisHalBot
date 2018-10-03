@@ -2,7 +2,6 @@ package monitor
 
 import (
 	"gopkg.in/mgo.v2"
-	"gopkg.in/mgo.v2/bson"
 	"time"
 )
 
@@ -13,9 +12,9 @@ type store struct {
 type Store interface {
 	SaveRateData(d data)
 	SaveResponceCodeData([]string)
-	GetCount(id string) (int, time.Time, error)
-	IncreaseCount(id string) error
-	ZeroCount(id string) error
+	GetCount(id string, key string) (int, time.Time, error)
+	IncreaseCount(id string, key string) error
+	ZeroCount(id string, key string) error
 }
 
 func NewMongoStore(db *mgo.Database) Store {
@@ -24,24 +23,24 @@ func NewMongoStore(db *mgo.Database) Store {
 	}
 }
 
-func (s *store) GetCount(id string) (int, time.Time, error) {
+func (s *store) GetCount(id string, key string) (int, time.Time, error) {
 	c := s.db.C("failurecound")
 	var r failurecount
-	err := c.Find(bson.M{"apistring": id}).One(&r)
+	err := c.FindId(id + key).One(&r)
 	return r.Count, r.FirstError, err
 }
 
-func (s *store) IncreaseCount(id string) error {
+func (s *store) IncreaseCount(id string, key string) error {
 	c := s.db.C("failurecound")
 	var r failurecount
-	q := c.Find(bson.M{"apistring": id})
+	q := c.FindId(id + key)
 	count, err := q.Count()
 	if err != nil {
 		return err
 	}
 
 	if count == 0 {
-		r.Apistring = id
+		r.ID = id + key
 		r.Count = 1
 		r.FirstError = time.Now()
 		return c.Insert(&r)
@@ -54,21 +53,21 @@ func (s *store) IncreaseCount(id string) error {
 		if r.Count == 1 {
 			r.FirstError = time.Now()
 		}
-		return c.Update(bson.M{"apistring": id}, &r)
+		return c.UpdateId(id+key, &r)
 	}
 }
 
-func (s *store) ZeroCount(id string) error {
+func (s *store) ZeroCount(id string, key string) error {
 	c := s.db.C("failurecound")
 	var r failurecount
-	q := c.Find(bson.M{"apistring": id})
+	q := c.FindId(id + key)
 	count, err := q.Count()
 	if err != nil {
 		return err
 	}
 
 	if count == 0 {
-		r.Apistring = id
+		r.ID = id + key
 		r.Count = 0
 		return c.Insert(&r)
 	} else {
@@ -77,7 +76,7 @@ func (s *store) ZeroCount(id string) error {
 			return err
 		}
 		r.Count = 0
-		return c.Update(bson.M{"apistring": id}, &r)
+		return c.UpdateId(id+key, &r)
 	}
 }
 
@@ -113,8 +112,7 @@ type responceCodeRecord struct {
 }
 
 type failurecount struct {
-	ID         bson.ObjectId `bson:"_id,omitempty"`
-	Apistring  string
+	ID         string `bson:"_id,omitempty"`
 	Count      int
 	FirstError time.Time
 }

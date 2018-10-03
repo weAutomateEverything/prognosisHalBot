@@ -36,39 +36,39 @@ func (s sourceSinkMonitor) GetName() string {
 	return "SourceSink"
 }
 
-func (s sourceSinkMonitor) CheckResponse(ctx context.Context, input [][]string) (failure bool, failuremsg string, err error) {
-
+func (s sourceSinkMonitor) CheckResponse(ctx context.Context, input [][]string) (response []monitor.Response, err error) {
 	for _, row := range input {
-		failed, msg := s.checkConnected(row)
-		if failed {
-			failure = true
-		}
-		if msg != "" {
-			failuremsg = failuremsg + msg + "\n"
-		}
+		node, failed, msg := s.checkConnected(row)
+		response = append(response, monitor.Response{
+			Key:        node,
+			Failure:    failed,
+			FailureMsg: msg,
+		})
 	}
 	for _, row := range input {
-		failed, msg := s.checkMaxConnections(ctx, row)
-		if failed {
-			failure = true
-		}
-		if msg != "" {
-			failuremsg = failuremsg + msg + "\n"
+		node, failed, msg := s.checkMaxConnections(ctx, row)
+		if node != "" {
+			response = append(response, monitor.Response{
+				Key:        node + "-Connections",
+				Failure:    failed,
+				FailureMsg: msg,
+			})
 		}
 	}
 	return
 }
 
-func (s sourceSinkMonitor) checkConnected(row []string) (failure bool, failuremsg string) {
+func (s sourceSinkMonitor) checkConnected(row []string) (node string, failure bool, failuremsg string) {
+	node = strings.ToUpper(row[0])
+	for i := 0; i < 10; i++ {
+		node = strings.Replace(node, strconv.FormatInt(int64(i), 10), "", -1)
+	}
+
 	if row[1] == "Connected" {
 		return
 	}
 
-	node := strings.ToUpper(row[0])
 	log.Printf("%v detected as down", node)
-	for i := 0; i < 10; i++ {
-		node = strings.Replace(node, strconv.FormatInt(int64(i), 10), "", -1)
-	}
 
 	for _, times := range s.store.GetNodeTimes() {
 		if strings.Index(times.Nodename, node) != -1 {
@@ -89,9 +89,10 @@ func (s sourceSinkMonitor) checkConnected(row []string) (failure bool, failurems
 	return
 }
 
-func (s sourceSinkMonitor) checkMaxConnections(ctx context.Context, row []string) (failure bool, failuremsg string) {
+func (s sourceSinkMonitor) checkMaxConnections(ctx context.Context, row []string) (node string, failure bool, failuremsg string) {
 	for _, max := range s.store.getMaxConnections() {
 		if row[0] == max.Nodename {
+			node = row[0]
 			v := row[2]
 			connections, err := strconv.ParseInt(v, 10, 64)
 			if err != nil {
