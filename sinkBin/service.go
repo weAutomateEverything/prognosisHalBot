@@ -158,7 +158,7 @@ func (s sinkBinMonitor) validateAnomaly(ctx context.Context, value float64, inde
 		return
 	}
 
-	if v.AnomalyScore > 5 {
+	if v.AnomalyScore > 2 {
 		failed = true
 		msg = v.Explination
 	}
