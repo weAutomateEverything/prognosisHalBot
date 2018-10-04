@@ -127,12 +127,12 @@ func (s *service) checkPrognosis() {
 			if resp.Failure {
 				s.handleFailed(ctx, monitor, resp)
 			} else {
-				_, t, _ := s.store.GetCount(monitor.Id, resp.Key)
+				_, t, _ := s.store.GetCount(monitor.Name, resp.Key)
 				d := time.Since(t)
 				if monitor.messageSent {
 					s.sendMessage(ctx, emoji.Sprintf(":white_check_mark: No issues detected for %v %v. Errors occurred for %v", monitor.Name, resp.Key, d.String()), monitor.Group)
 				}
-				s.store.ZeroCount(monitor.Id, resp.Key)
+				s.store.ZeroCount(monitor.Name, resp.Key)
 				monitor.calloutInvoked = false
 				monitor.messageSent = false
 			}
@@ -141,13 +141,13 @@ func (s *service) checkPrognosis() {
 }
 
 func (s *service) handleFailed(ctx context.Context, monitor *monitors, response Response) {
-	err := s.store.IncreaseCount(monitor.Id, response.Key)
+	err := s.store.IncreaseCount(monitor.Name, response.Key)
 	if err != nil {
 		log.Println(err)
 		s.sendMessage(ctx, err.Error(), getErrorGroup())
 		return
 	}
-	_, t, err := s.store.GetCount(monitor.Id, response.Key)
+	_, t, err := s.store.GetCount(monitor.Name, response.Key)
 	d := time.Since(t)
 
 	if err != nil {
@@ -277,7 +277,7 @@ func (s *service) checkMonitor(ctx context.Context, monitor *monitors) (response
 			continue
 		}
 
-		//First the root element - thios should include a item called Data
+		//First the root element - this should include a item called Data
 		key := monitor.Id
 		if strings.HasPrefix(key, "id_") {
 			key = strings.Replace(key, "id_", "", 1)
@@ -299,7 +299,7 @@ func (s *service) checkMonitor(ctx context.Context, monitor *monitors) (response
 
 		if len(dataArray) == 0 {
 			//Sometimes, it takes prognosis a while to wake up... so the first 10 no data we can ignore
-			log.Printf("Length of data is 0 for dashboard %v, graph %v", monitor.Dashboard, monitor.Id)
+			log.Printf("Length of data is 0 for dashboard %v, graph %v", monitor.Dashboard, monitor.Name)
 			continue
 		}
 		dataElements := dataArray[0].([]interface{})
@@ -320,7 +320,7 @@ func (s *service) checkMonitor(ctx context.Context, monitor *monitors) (response
 		return monitor.CheckResponse(ctx, input)
 
 	}
-	s.sendMessage(ctx, fmt.Sprintf("No data found after 10 attempts for dashboard %v", monitor.Id), getErrorGroup())
+	s.sendMessage(ctx, fmt.Sprintf("No data found after 10 attempts for dashboard %v", monitor.Name), getErrorGroup())
 	err = NoResultsError{Messsage: fmt.Sprintf("no data found for %v, graph %v", monitor.Dashboard, getErrorGroup())}
 	return nil, err
 
@@ -364,7 +364,7 @@ func (s *service) getGuidForMonitor(ctx context.Context, monitor *monitors) (gui
 			}
 		}
 	}
-	msg := fmt.Sprintf("no guid found for %v on dashboard %v. Restarting Bot", monitor.Id, getErrorGroup())
+	msg := fmt.Sprintf("no guid found for %v on dashboard %v. Restarting Bot", monitor.Name, getErrorGroup())
 	s.sendMessage(ctx, msg, getErrorGroup())
 	panic(msg)
 	return
