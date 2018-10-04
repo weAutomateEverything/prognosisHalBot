@@ -377,6 +377,7 @@ func (s *service) sendMessage(ctx context.Context, message string, group int64) 
 	resp, err := http.Post(fmt.Sprintf("%v/api/alert/%v", os.Getenv("HAL_ENDPOINT"), group),
 		"application/text", strings.NewReader(message))
 	if err != nil {
+		log.Printf("error sending message %v to group %v - error %v", message, group, err)
 		return
 	}
 

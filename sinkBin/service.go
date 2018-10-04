@@ -1,9 +1,9 @@
 package sinkBin
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/weAutomateEverything/anomalyDetectionHal/detector"
+	"github.com/weAutomateEverything/prognosisHalBot/anomaly"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"golang.org/x/net/context"
 	"log"
@@ -15,11 +15,14 @@ import (
 
 func NewSinkBinMonitor() monitor.Monitor {
 
-	return &sinkBinMonitor{}
+	return &sinkBinMonitor{
+		anomaly: anomaly.NewService(),
+	}
 }
 
 type sinkBinMonitor struct {
-	client detector.AnomalyDetectorClient
+	client  detector.AnomalyDetectorClient
+	anomaly anomaly.Service
 }
 
 func (m sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string) (response []monitor.Response, err error) {
@@ -141,44 +144,8 @@ func (m sinkBinMonitor) saveAndValidate(ctx context.Context, requests <-chan dat
 }
 
 func (s sinkBinMonitor) validateAnomaly(ctx context.Context, value float64, index string) (failed bool, msg string) {
-
-	resp, err := http.Post(os.Getenv("DETECTOR_ENDPOINT")+"/api/anomaly/"+index, "application/text",
-		strings.NewReader(fmt.Sprintf("%v", value)))
-
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	var v detector.AnomalyAddDataResponse
-	err = json.NewDecoder(resp.Body).Decode(&v)
-
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	if v.AnomalyScore > getThreshold() {
-		failed = true
-		msg = v.Explination
-	}
-
-	resp.Body.Close()
-
+	failed, msg, _ = s.anomaly.Analyse(index, value)
 	return
-}
-
-func getThreshold() float64 {
-	v := os.Getenv("ANOMALY_THRESHOLD")
-	if v == "" {
-		return 3
-	}
-
-	f, err := strconv.ParseFloat(v, 64)
-	if err != nil {
-		return 3
-	}
-	return f
 
 }
 
