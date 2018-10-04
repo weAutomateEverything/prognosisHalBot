@@ -158,7 +158,7 @@ func (s sinkBinMonitor) validateAnomaly(ctx context.Context, value float64, inde
 		return
 	}
 
-	if v.AnomalyScore > 2 {
+	if v.AnomalyScore > getThreshold() {
 		failed = true
 		msg = v.Explination
 	}
@@ -166,6 +166,20 @@ func (s sinkBinMonitor) validateAnomaly(ctx context.Context, value float64, inde
 	resp.Body.Close()
 
 	return
+}
+
+func getThreshold() float64 {
+	v := os.Getenv("ANOMALY_THRESHOLD")
+	if v == "" {
+		return 3
+	}
+
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return 3
+	}
+	return f
+
 }
 
 func (sinkBinMonitor) GetName() string {
