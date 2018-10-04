@@ -2,10 +2,9 @@ package sourceMonitor
 
 import (
 	"fmt"
-	"github.com/weAutomateEverything/anomalyDetectionHal/detector"
+	"github.com/weAutomateEverything/prognosisHalBot/anomaly"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"golang.org/x/net/context"
-	"google.golang.org/grpc"
 	"log"
 	"net/http"
 	"os"
@@ -15,20 +14,14 @@ import (
 )
 
 type sourceSinkMonitor struct {
-	store  Store
-	client detector.AnomalyDetectorClient
+	store   Store
+	anomaly anomaly.Service
 }
 
 func NewSourceSinkMonitor(store Store) monitor.Monitor {
-	conn, err := grpc.Dial(os.Getenv("DETECTOR_ENDPOINT"), grpc.WithInsecure())
-	if err != nil {
-		panic(err)
-	}
-	c := detector.NewAnomalyDetectorClient(conn)
-
 	return &sourceSinkMonitor{
-		store:  store,
-		client: c,
+		store:   store,
+		anomaly: anomaly.NewService(),
 	}
 }
 
@@ -138,22 +131,10 @@ func (s sourceSinkMonitor) saveAndValidate(ctx context.Context, nodename string,
 		resp.Body.Close()
 	}
 
-	d := detector.InputData{
-		Value: float64(count),
-		Key:   "prognosis_connections_" + nodename,
-	}
-	out, err := s.client.AnalyseData(ctx, &d)
+	failed, msg, _ := s.anomaly.Analyse("connections_"+nodename, float64(count))
 
-	if err != nil {
-		log.Println(err)
-		return false, ""
-	}
+	return failed, msg
 
-	if out.Score > 3 {
-		return true, out.Explanation
-	}
-
-	return false, ""
 }
 
 func (s sourceSinkMonitor) checkTime(hours, impact string) bool {
