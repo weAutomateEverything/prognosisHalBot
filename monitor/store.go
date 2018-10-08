@@ -5,22 +5,77 @@ import (
 	"time"
 )
 
-type store struct {
-	db *mgo.Database
-}
-
 type Store interface {
 	SaveRateData(d data)
 	SaveResponceCodeData([]string)
 	GetCount(id string, key string) (int, time.Time, error)
 	IncreaseCount(id string, key string) error
 	ZeroCount(id string, key string) error
+	SetMessageSent(id string, key string) error
+	SetCalloutInvoked(is string, key string) error
+	IsMessageSent(id string, key string) (bool, error)
+	IsCalloutInvoked(id string, key string) (bool, error)
 }
 
 func NewMongoStore(db *mgo.Database) Store {
 	return &store{
 		db: db,
 	}
+}
+
+type store struct {
+	db *mgo.Database
+}
+
+func (s *store) IsMessageSent(id string, key string) (bool, error) {
+	c := s.db.C("failurecound")
+	var r failurecount
+	err := c.FindId(id + key).One(&r)
+
+	if err != nil {
+		return false, err
+	}
+	return r.MessageSent, nil
+}
+
+func (s *store) IsCalloutInvoked(id string, key string) (bool, error) {
+	c := s.db.C("failurecound")
+	var r failurecount
+	err := c.FindId(id + key).One(&r)
+
+	if err != nil {
+		return false, err
+	}
+	return r.CalloutInvoked, nil
+}
+
+func (s *store) SetMessageSent(id string, key string) error {
+	c := s.db.C("failurecound")
+	var r failurecount
+	err := c.FindId(id + key).One(&r)
+
+	if err != nil {
+		return err
+	}
+
+	r.MessageSent = true
+
+	return c.UpdateId(id+key, &r)
+
+}
+
+func (s *store) SetCalloutInvoked(id string, key string) error {
+	c := s.db.C("failurecound")
+	var r failurecount
+	err := c.FindId(id + key).One(&r)
+
+	if err != nil {
+		return err
+	}
+
+	r.CalloutInvoked = true
+
+	return c.UpdateId(id+key, &r)
 }
 
 func (s *store) GetCount(id string, key string) (int, time.Time, error) {
@@ -76,6 +131,8 @@ func (s *store) ZeroCount(id string, key string) error {
 			return err
 		}
 		r.Count = 0
+		r.MessageSent = false
+		r.CalloutInvoked = false
 		return c.UpdateId(id+key, &r)
 	}
 }
@@ -112,7 +169,9 @@ type responceCodeRecord struct {
 }
 
 type failurecount struct {
-	ID         string `bson:"_id,omitempty"`
-	Count      int
-	FirstError time.Time
+	ID             string `bson:"_id,omitempty"`
+	Count          int
+	FirstError     time.Time
+	MessageSent    bool
+	CalloutInvoked bool
 }

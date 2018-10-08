@@ -127,14 +127,21 @@ func (s *service) checkPrognosis() {
 			if resp.Failure {
 				s.handleFailed(ctx, monitor, resp)
 			} else {
-				_, t, _ := s.store.GetCount(monitor.Name, resp.Key)
+				_, t, err := s.store.GetCount(monitor.Name, resp.Key)
+				if err != nil {
+					s.sendMessage(ctx, fmt.Sprintf("Error fetching count %v", err.Error()), getErrorGroup())
+					continue
+				}
 				d := time.Since(t)
-				if monitor.messageSent {
+				sent, err := s.store.IsMessageSent(monitor.Name, resp.Key)
+				if err != nil {
+					s.sendMessage(ctx, fmt.Sprintf("Error checking if a message has been sent. %v", err.Error()), getErrorGroup())
+					continue
+				}
+				if sent {
 					s.sendMessage(ctx, emoji.Sprintf(":white_check_mark: No issues detected for %v %v. Errors occurred for %v", monitor.Name, resp.Key, d.String()), monitor.Group)
 				}
 				s.store.ZeroCount(monitor.Name, resp.Key)
-				monitor.calloutInvoked = false
-				monitor.messageSent = false
 			}
 		}
 	}
@@ -159,12 +166,18 @@ func (s *service) handleFailed(ctx context.Context, monitor *monitors, response 
 	if d > 30*time.Second {
 		log.Printf("Sendign warning for %v", monitor.Name)
 		s.sendMessage(ctx, emoji.Sprintf(":x: %v. Error has been occurring for %v.", response.FailureMsg, d.String()), monitor.Group)
-		monitor.messageSent = true
+		s.store.SetMessageSent(monitor.Name, response.Key)
 	}
 
 	//After 15 alerts, lets invoke callout
 	if d > 3*time.Minute {
-		if !monitor.calloutInvoked {
+		calloutInvoked, err := s.store.IsCalloutInvoked(monitor.Name, response.Key)
+		if err != nil {
+			s.sendMessage(ctx, fmt.Sprintf("Error checking if callout has been invoked: %v", err.Error()), getErrorGroup())
+			return
+
+		}
+		if !calloutInvoked {
 			log.Printf("Invoking callout for %v %v\n", monitor.Name, response.Key)
 
 			c := callout.SendCalloutRequest{
@@ -182,7 +195,10 @@ func (s *service) handleFailed(ctx context.Context, monitor *monitors, response 
 				return
 			}
 			resp.Body.Close()
-			monitor.calloutInvoked = true
+			err = s.store.SetCalloutInvoked(monitor.Name, response.Key)
+			if err != nil {
+				s.sendMessage(ctx, fmt.Sprintf("Error setting callout invoked: %v", err.Error()), getErrorGroup())
+			}
 		}
 	}
 	return
@@ -432,8 +448,6 @@ type monitors struct {
 	Type, Dashboard, Id, Name, ObjectType string
 	Group                                 int64
 	lastSuccess                           int64
-	calloutInvoked                        bool
-	messageSent                           bool
 }
 
 func getTimeout() context.Context {
