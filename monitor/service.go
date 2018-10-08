@@ -129,7 +129,6 @@ func (s *service) checkPrognosis() {
 			} else {
 				_, t, err := s.store.GetCount(monitor.Name, resp.Key)
 				if err != nil {
-					s.sendMessage(ctx, fmt.Sprintf("Error fetching count %v", err.Error()), getErrorGroup())
 					continue
 				}
 				d := time.Since(t)
