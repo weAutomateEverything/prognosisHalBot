@@ -41,6 +41,10 @@ func (s service) Analyse(key string, value float64) (anomlay bool, msg string, e
 		return
 	}
 
+	if v.Average < getAverageThreshold() {
+		return
+	}
+
 	if v.AnomalyScore > getThreshold() {
 		anomlay = true
 		msg = v.Explination
@@ -58,6 +62,20 @@ func getThreshold() float64 {
 	f, err := strconv.ParseFloat(v, 64)
 	if err != nil {
 		return 3
+	}
+	return f
+
+}
+
+func getAverageThreshold() float64 {
+	v := os.Getenv("AVERAGE_THRESHOLD")
+	if v == "" {
+		return 5
+	}
+
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return 5
 	}
 	return f
 
