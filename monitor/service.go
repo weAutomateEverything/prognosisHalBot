@@ -131,7 +131,7 @@ func (s *service) checkPrognosis() {
 				if err != nil {
 					continue
 				}
-				d := time.Since(t)
+				d := time.Since(t).Truncate(time.Second)
 				sent, err := s.store.IsMessageSent(monitor.Name, resp.Key)
 				if err != nil {
 					s.sendMessage(ctx, fmt.Sprintf("Error checking if a message has been sent. %v", err.Error()), getErrorGroup())
@@ -154,7 +154,7 @@ func (s *service) handleFailed(ctx context.Context, monitor *monitors, response 
 		return
 	}
 	_, t, err := s.store.GetCount(monitor.Name, response.Key)
-	d := time.Since(t)
+	d := time.Since(t).Truncate(time.Second)
 
 	if err != nil {
 		log.Println(err)
