@@ -99,6 +99,7 @@ func (s *service) runChecks() {
 
 	for true {
 		s.checkPrognosis()
+		sleep()
 	}
 }
 
@@ -398,6 +399,20 @@ func (s *service) sendMessage(ctx context.Context, message string, group int64) 
 
 	resp.Body.Close()
 
+}
+
+func sleep() {
+	sleep := os.Getenv("SLEEP_INTERVAL")
+	if sleep == "" {
+		return
+	}
+
+	i, err := strconv.Atoi(sleep)
+	if err != nil {
+		log.Printf("Error formatting sleep value - not sleeping. %v", err.Error())
+		return
+	}
+	time.Sleep(time.Duration(i) * time.Second)
 }
 
 type httpLogger struct {
