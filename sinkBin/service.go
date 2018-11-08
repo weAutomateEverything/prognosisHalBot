@@ -2,7 +2,6 @@ package sinkBin
 
 import (
 	"fmt"
-	"github.com/weAutomateEverything/anomalyDetectionHal/detector"
 	"github.com/weAutomateEverything/prognosisHalBot/anomaly"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"golang.org/x/net/context"
@@ -21,7 +20,6 @@ func NewSinkBinMonitor() monitor.Monitor {
 }
 
 type sinkBinMonitor struct {
-	client  detector.AnomalyDetectorClient
 	anomaly anomaly.Service
 }
 
@@ -116,15 +114,15 @@ func (m sinkBinMonitor) saveAndValidate(ctx context.Context, requests <-chan dat
 			continue
 		}
 
-		f, r := m.validateAnomaly(ctx, float64(d.DenyCount), "prognosis_deny_"+d.BIN)
+		f, diff, r := m.validateAnomaly(ctx, float64(d.DenyCount), "prognosis_deny_"+d.BIN)
 		v.key = d.BIN
-		if f {
+		if f && diff > 0 {
 			v.failed = true
-			v.msg = "Anomaly detected in the deny rate for bin " + d.BIN + " " + r + "\n"
+			v.msg = "Anomaly detected in the *deny rate* for bin " + d.BIN + " " + r + "\n"
 		}
 
-		f, r = m.validateAnomaly(ctx, d.ApprovalRate, "prognosis_approval_rate_"+d.BIN)
-		if f {
+		f, diff, r = m.validateAnomaly(ctx, d.ApprovalRate, "prognosis_approval_rate_"+d.BIN)
+		if f && diff < 0 {
 			v.failed = true
 			v.msg = v.msg + "Anomaly detected in the *approval rate* for bin " + d.BIN + "\n" + r + "\n\n"
 		}
@@ -143,8 +141,8 @@ func (m sinkBinMonitor) saveAndValidate(ctx context.Context, requests <-chan dat
 
 }
 
-func (s sinkBinMonitor) validateAnomaly(ctx context.Context, value float64, index string) (failed bool, msg string) {
-	failed, msg, _ = s.anomaly.Analyse(index, value)
+func (s sinkBinMonitor) validateAnomaly(ctx context.Context, value float64, index string) (failed bool, difference float64, msg string) {
+	failed, difference, msg, _ = s.anomaly.Analyse(index, value)
 	return
 
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/weAutomateEverything/anomalyDetectionHal/detector"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -16,13 +17,13 @@ func NewService() Service {
 }
 
 type Service interface {
-	Analyse(key string, value float64) (anomlay bool, msg string, err error)
+	Analyse(key string, value float64) (anomlay bool, difference float64, msg string, err error)
 }
 
 type service struct {
 }
 
-func (s service) Analyse(key string, value float64) (anomlay bool, msg string, err error) {
+func (s service) Analyse(key string, value float64) (anomlay bool, difference float64, msg string, err error) {
 	resp, err := http.Post(os.Getenv("DETECTOR_ENDPOINT")+"/api/anomaly/"+key, "application/text",
 		strings.NewReader(fmt.Sprintf("%v", value)))
 
@@ -47,7 +48,9 @@ func (s service) Analyse(key string, value float64) (anomlay bool, msg string, e
 
 	if v.AnomalyScore > getThreshold() {
 		anomlay = true
-		msg = v.Explination
+		msg = fmt.Sprintf("Current Value: %v. Average value %v. \n\n*Expected Values for*\ntime of day: %v\nday of week: %v\nday of month: %v",
+			value, math.Round(v.Average), math.Round(v.Day), math.Round(v.Day), math.Round(v.Month))
+		difference = value - v.Average
 	}
 
 	return
