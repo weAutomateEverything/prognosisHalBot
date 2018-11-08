@@ -131,7 +131,7 @@ func (s sourceSinkMonitor) saveAndValidate(ctx context.Context, nodename string,
 		resp.Body.Close()
 	}
 
-	failed, msg, _ := s.anomaly.Analyse("connections_"+nodename, float64(count))
+	failed, _, msg, _ := s.anomaly.Analyse("connections_"+nodename, float64(count))
 
 	return failed, msg
 
