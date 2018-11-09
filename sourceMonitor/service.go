@@ -95,7 +95,7 @@ func (s sourceSinkMonitor) checkMaxConnections(ctx context.Context, row []string
 			failed, msg := s.saveAndValidate(ctx, max.Nodename, int(connections))
 			if failed {
 				failure = true
-				failuremsg = failuremsg + "\n" + msg
+				failuremsg = failuremsg + "\n unusual number of connections detected. \n" + msg
 			}
 			if connections == 0 {
 				failure = true
