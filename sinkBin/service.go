@@ -121,11 +121,7 @@ func (m sinkBinMonitor) saveAndValidate(ctx context.Context, requests <-chan dat
 			v.msg = "Anomaly detected in the *deny rate* for bin " + d.BIN + " " + r + "\n"
 		}
 
-		f, diff, r = m.validateAnomaly(ctx, d.ApprovalRate, "prognosis_approval_rate_"+d.BIN)
-		if f && diff < 0 {
-			v.failed = true
-			v.msg = v.msg + "Anomaly detected in the *approval rate* for bin " + d.BIN + "\n" + r + "\n\n"
-		}
+		m.validateAnomaly(ctx, d.ApprovalRate, "prognosis_approval_rate_"+d.BIN)
 
 		resp, err := http.Post(fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
 			"application/text", strings.NewReader(s))
