@@ -25,5 +25,6 @@ artifacts:
   files:
   - prognosis
   - Dockerfile
+  - custom.pem
 cache:
   paths:
