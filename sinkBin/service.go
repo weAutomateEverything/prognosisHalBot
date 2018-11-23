@@ -96,9 +96,23 @@ func (m sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string) (resp
 
 func (m sinkBinMonitor) saveAndValidate(ctx context.Context, requests <-chan data, result chan<- validationResult) {
 	for d := range requests {
-		s := ""
 		v := validationResult{}
-		s = s + fmt.Sprintf("transactions,node=%v,bin=%v approval=%v,valid_deny=%v,transaction_per_second=%v,system_malfunction=%v,issuer_timeout=%v,deny_count=%v,approval_rate=%v\n",
+
+		if d.BIN == "" {
+			continue
+		}
+
+		f, diff, denyScore, r := m.validateAnomaly(ctx, float64(d.DenyCount), "prognosis_deny_"+d.BIN)
+
+		v.key = d.BIN
+		if f && diff > 0 {
+			v.failed = true
+			v.msg = "Anomaly detected in the *deny rate* for bin " + d.BIN + " " + r + "\n"
+		}
+
+		_, _, approvalScore, _ := m.validateAnomaly(ctx, d.ApprovalRate, "prognosis_approval_rate_"+d.BIN)
+
+		s := fmt.Sprintf("transactions,node=%v,bin=%v approval=%v,valid_deny=%v,transaction_per_second=%v,system_malfunction=%v,issuer_timeout=%v,deny_count=%v,approval_rate=%v,deny_score=%v,approval_score=%v\n",
 			d.Node,
 			d.BIN,
 			d.ApprovalCount,
@@ -108,20 +122,9 @@ func (m sinkBinMonitor) saveAndValidate(ctx context.Context, requests <-chan dat
 			d.IssuerTimeout,
 			d.DenyCount,
 			int(d.ApprovalRate),
+			denyScore,
+			approvalScore,
 		)
-
-		if d.BIN == "" {
-			continue
-		}
-
-		f, diff, r := m.validateAnomaly(ctx, float64(d.DenyCount), "prognosis_deny_"+d.BIN)
-		v.key = d.BIN
-		if f && diff > 0 {
-			v.failed = true
-			v.msg = "Anomaly detected in the *deny rate* for bin " + d.BIN + " " + r + "\n"
-		}
-
-		m.validateAnomaly(ctx, d.ApprovalRate, "prognosis_approval_rate_"+d.BIN)
 
 		resp, err := http.Post(fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
 			"application/text", strings.NewReader(s))
@@ -137,8 +140,8 @@ func (m sinkBinMonitor) saveAndValidate(ctx context.Context, requests <-chan dat
 
 }
 
-func (s sinkBinMonitor) validateAnomaly(ctx context.Context, value float64, index string) (failed bool, difference float64, msg string) {
-	failed, difference, msg, _ = s.anomaly.Analyse(index, value)
+func (s sinkBinMonitor) validateAnomaly(ctx context.Context, value float64, index string) (failed bool, difference float64, score float64, msg string) {
+	failed, difference, msg, score, _ = s.anomaly.Analyse(index, value)
 	return
 
 }

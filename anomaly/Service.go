@@ -17,13 +17,13 @@ func NewService() Service {
 }
 
 type Service interface {
-	Analyse(key string, value float64) (anomlay bool, difference float64, msg string, err error)
+	Analyse(key string, value float64) (anomlay bool, difference float64, msg string, score float64, err error)
 }
 
 type service struct {
 }
 
-func (s service) Analyse(key string, value float64) (anomlay bool, difference float64, msg string, err error) {
+func (s service) Analyse(key string, value float64) (anomlay bool, difference float64, msg string, score float64, err error) {
 	resp, err := http.Post(os.Getenv("DETECTOR_ENDPOINT")+"/api/anomaly/"+key, "application/text",
 		strings.NewReader(fmt.Sprintf("%v", value)))
 
@@ -41,6 +41,8 @@ func (s service) Analyse(key string, value float64) (anomlay bool, difference fl
 		log.Println(err)
 		return
 	}
+
+	score = v.AnomalyScore
 
 	if v.Average < getAverageThreshold() {
 		return

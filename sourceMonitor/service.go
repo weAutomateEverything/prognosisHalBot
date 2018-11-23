@@ -123,15 +123,15 @@ func (s sourceSinkMonitor) checkSend(node nodeHours) bool {
 
 func (s sourceSinkMonitor) saveAndValidate(ctx context.Context, nodename string, count int) (bool, string) {
 
+	failed, _, msg, score, _ := s.anomaly.Analyse("connections_"+nodename, float64(count))
+
 	resp, err := http.Post(fmt.Sprintf("%v/write?db=prognosis", os.Getenv("KAPACITOR_URL")),
-		"application/text", strings.NewReader(fmt.Sprintf("connections,node=%v value=%v", nodename, count)))
+		"application/text", strings.NewReader(fmt.Sprintf("connections,node=%v value=%v,score=%v", nodename, count, score)))
 	if err != nil {
 		log.Println(err)
 	} else {
 		resp.Body.Close()
 	}
-
-	failed, _, msg, _ := s.anomaly.Analyse("connections_"+nodename, float64(count))
 
 	return failed, msg
 
