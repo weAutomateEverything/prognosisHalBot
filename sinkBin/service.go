@@ -21,14 +21,13 @@ type sinkBinMonitor struct {
 	anomaly anomaly.Service
 }
 
-
 func (m sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string) (response []monitor.Response, err error) {
 
 	b, err := json.Marshal(req)
 	if err != nil {
 		return
 	}
-	resp, err := http.Post(os.Getenv("SINKBIN_URL"),"application/text",bytes.NewReader(b))
+	resp, err := http.Post(os.Getenv("SINKBIN_URL"), "application/text", bytes.NewReader(b))
 	if err != nil {
 		return
 	}
@@ -40,4 +39,3 @@ func (m sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string) (resp
 func (sinkBinMonitor) GetName() string {
 	return "SinkBin"
 }
-
