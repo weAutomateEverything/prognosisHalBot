@@ -6,6 +6,7 @@ import (
 	"github.com/weAutomateEverything/prognosisHalBot/anomaly"
 	"github.com/weAutomateEverything/prognosisHalBot/monitor"
 	"golang.org/x/net/context"
+	"log"
 	"net/http"
 	"os"
 )
@@ -27,12 +28,15 @@ func (m sinkBinMonitor) CheckResponse(ctx context.Context, req [][]string) (resp
 	if err != nil {
 		return
 	}
+	log.Println("Sending to remote")
 	resp, err := http.Post(os.Getenv("SINKBIN_URL"), "application/text", bytes.NewReader(b))
 	if err != nil {
+		log.Printf("remote error: %v", err)
 		return
 	}
 
 	err = json.NewDecoder(resp.Body).Decode(&response)
+	log.Printf("response %v, error %v", len(response), err)
 	return
 
 }
