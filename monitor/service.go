@@ -67,6 +67,7 @@ func NewService(store Store, monitors ...Monitor) Service {
 	http.DefaultClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
+	http.DefaultClient.Timeout = 30 * time.Second
 
 	resp, err := http.Get(cfg)
 	if err != nil {
